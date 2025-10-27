@@ -49,7 +49,7 @@ DEFAULTS = {
     "EMBED_PROVIDER": "local",
     "EMBED_MODEL_LOCAL": "all-MiniLM-L6-v2",
     "LLM_PROVIDER": "anthropic",
-    "ANTHROPIC_MODEL": "claude-haiku-4-5-20251001",
+    "ANTHROPIC_MODEL": "claude-3-haiku-20240307",
     "CHUNK_SIZE": 1200,
     "CHUNK_OVERLAP": 200,
 

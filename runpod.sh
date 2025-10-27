@@ -128,7 +128,7 @@ cmd_install() {
   ensure_dirs
   sudo apt-get update
   sudo apt-get install -y nginx certbot python3-certbot-nginx python3-venv python3-pip \
-    tesseract-ocr poppler-utils build-essential git curl
+    build-essential git curl
 
   create_venv_and_install
   create_http_only_site "$domain"

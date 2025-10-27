@@ -7,14 +7,18 @@ sentence-transformers==2.6.1
 numpy==1.26.4
 pdfplumber==0.11.4
 PyPDF2==3.0.1
-pytesseract==0.3.10
 Pillow==10.3.0
 openai==1.35.13
 anthropic==0.71.0
 chromadb==1.2.1
 routellm==0.1.0
 pdf2image==1.16.3
-langchain==0.0.330
+# Updated LangChain packages
+langchain==0.3.13
+langchain-community==0.3.13
+langchain-core==0.3.28
+langchain-text-splitters==0.3.4
+langchain-anthropic==0.3.5
 pypdf==3.17.2
 gunicorn==21.2.0
 psutil==5.9.8
