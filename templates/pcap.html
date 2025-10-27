@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VoIP-LLM Ops Copilot - PCAP Analysis</title>
+    <link rel="stylesheet" href="/static/css/pcap_style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body class="dark-theme">
+    <div class="app-container">
+        <!-- Top Header Bar -->
+        <header class="top-bar">
+            <div class="logo">
+                <i class="fas fa-network-wired"></i>
+                <span>VoIP-LLM Ops Copilot</span>
+            </div>
+            <div class="header-controls">
+                    <select id="modelDropdown" class="model-selector">
+                        <option value="ollama">Ollama (Local)</option>
+                        <option value="gpt-4">GPT-4</option>
+                        <option value="claude-sonnet-4-20250514">Claude Sonnet 4 (2025‑05‑14)</option>
+                        <option value="routellm">RouteLLM</option>
+                        <option value="custom">Custom Model</option>
+                    </select>
+                <a href="/" class="nav-link" title="Home">
+                    <i class="fas fa-home"></i>
+                </a>
+            </div>
+        </header>
+
+        <div class="main-layout">
+            <!-- Left Sidebar (Chat History) -->
+            <aside class="sidebar" id="sidebar">
+                <div class="sidebar-header">
+                    <h3>Chats</h3>
+                    <button class="new-chat-btn" id="newChatBtn" title="New Chat">
+                        <i class="fas fa-plus"></i>
+                    </button>
+                </div>
+                <div class="chat-list" id="chatHistory">
+                    <!-- Recent chats will be populated here -->
+                    <div class="chat-list-item">
+                        <i class="fas fa-comments"></i>
+                        <span>New Conversation</span>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Main Chat Area -->
+            <main class="chat-container">
+                <!-- Welcome Screen -->
+                <div class="welcome-screen" id="welcomeScreen">
+                    <div class="welcome-content">
+                        <i class="fas fa-network-wired welcome-icon"></i>
+                        <h2>VoIP-LLM Ops Copilot</h2>
+                        <p>Analyze PCAP files, troubleshoot VoIP issues, and get expert insights.</p>
+                        <div class="welcome-features">
+                            <div class="feature-item">
+                                <i class="fas fa-file-upload"></i>
+                                <span>Upload PCAP files</span>
+                            </div>
+                            <div class="feature-item">
+                                <i class="fas fa-brain"></i>
+                                <span>AI-powered analysis</span>
+                            </div>
+                            <div class="feature-item">
+                                <i class="fas fa-search"></i>
+                                <span>Web enrichment</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Chat Messages -->
+                <div class="chat-messages" id="chatMessages" style="display: none;">
+                    <!-- Messages will be populated here -->
+                </div>
+
+                <!-- Chat Input Section -->
+                <div class="chat-input-section">
+                    <!-- Attached PCAP display -->
+                    <div id="attachedPcap" class="attached-pcap" style="display:none;">
+                        <div class="pcap-info">
+                            <i class="fas fa-file-alt"></i>
+                            <div class="pcap-details">
+                                <div class="pcap-name" id="attachedPcapName"></div>
+                                <div class="pcap-stats" id="attachedPcapStats"></div>
+                            </div>
+                            <button class="remove-pcap-btn" id="removePcapBtn">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Chat Options (Checkboxes) -->
+                    <div class="chat-options">
+                        <label class="option-checkbox">
+                            <input type="checkbox" id="useVoIPTraining" checked>
+                            <span><i class="fas fa-database"></i> Use Training Data</span>
+                        </label>
+                        <label class="option-checkbox">
+                            <input type="checkbox" id="useWebSearch">
+                            <span><i class="fas fa-globe"></i> Web Search</span>
+                        </label>
+                        <label class="option-checkbox">
+                            <input type="checkbox" id="useConversationHistory">
+                            <span><i class="fas fa-comments"></i> Conversation History</span>
+                        </label>
+                        <label class="option-number">
+                            <span>Top K:</span>
+                            <input type="number" id="topK" value="5" min="1" max="10">
+                        </label>
+                    </div>
+
+                    <!-- Input Area -->
+                    <div class="input-wrapper">
+                        <button class="attach-btn" id="attachPcapBtn" title="Attach PCAP file">
+                            <i class="fas fa-paperclip"></i>
+                        </button>
+                        <input type="file" id="pcapFileInput" accept=".pcap,.pcapng,.cap" hidden>
+                        <textarea 
+                            id="chatInput" 
+                            placeholder="Ask about VoIP issues, analyze PCAP files..."
+                            rows="1"
+                        ></textarea>
+                        <button class="send-btn" id="sendBtn">
+                            <i class="fas fa-paper-plane"></i>
+                        </button>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- Loading Indicator -->
+    <div class="loading-indicator" id="loadingIndicator" style="display: none;">
+        <div class="spinner"></div>
+        <span id="loadingText">Processing...</span>
+    </div>
+
+    <script src="/static/js/pcap.js"></script>
+</body>
+</html>

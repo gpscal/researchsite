@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Research Site </title>
+    <link rel="icon" type="image/jpeg" href="/static/images/Prestige.png">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <link rel="stylesheet" href="/static/css/research.css">
+    <link rel="stylesheet" href="/static/css/notes.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <!-- Network Background -->
+    <svg id="bu_network-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+    
+    <!-- Top Header Bar (matching /pcap structure) -->
+    <header class="header">
+        <div class="logo">
+            <img src="/static/images/Prestige.png" alt="Logo" width="50" height="50">
+            <span class="logo-text">Research Site</span>
+        </div>
+        
+        <!-- Conversation History Toggle Button (Center) -->
+        <button class="docs-btn" id="docsBtn" title="Docs">
+            Docs
+        </button>
+        
+        <div class="header-controls">
+            <!-- New Chat Button -->
+            <button class="new-chat-btn" id="newChatBtn" title="New Chat">
+                <i class="fas fa-plus"></i> New Chat
+            </button>
+            
+            <!-- Model Selector -->
+            <select id="modelSelector" class="model-selector">
+                <option value="anthropic">Anthropic</option>
+            </select>
+            
+            <!-- Home Link -->
+            <a href="/" class="nav-link" title="Home">
+                <img src="/static/images/Asset.png" alt="Home" width="24" height="24">
+            </a>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <div class="main-container" id="mainContainer">
+        <!-- Chat Container (No Sidebar - Centered) -->
+        <div class="chat-container" id="chatContainer">
+            <!-- Welcome Screen (hidden after first message) -->
+            <div class="welcome-screen" id="welcomeScreen">
+                <div class="welcome-content">
+                    <img src="/static/images/Asset.png" alt="Diamond" width="50" height="50" style="margin: 0 auto 20px;">
+                    <h2>Research Assistant</h2>
+                    <p>AI-powered research assistant with RAG, training data, and web search capabilities.</p>
+                    <div class="welcome-features">
+                        <div class="feature-item">
+                            <i class="fas fa-database"></i>
+                            <span>Training Data</span>
+                        </div>
+                        <div class="feature-item">
+                            <i class="fas fa-globe"></i>
+                            <span>Web Search</span>
+                        </div>
+                        <div class="feature-item">
+                            <i class="fas fa-brain"></i>
+                            <span>AI Analysis</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chat Messages -->
+            <div class="chat-messages" id="chatMessages" style="display: none;">
+                <!-- Messages will be populated here -->
+            </div>
+
+            <!-- Jump to Bottom Button -->
+            <button class="jump-to-bottom hidden" id="jumpToBottom">
+                <i class="fas fa-chevron-down"></i>
+            </button>
+
+            <!-- Chat Input Section -->
+            <div class="chat-input-area">
+                <!-- Chat Options (Checkboxes) -->
+                <div class="chat-options">
+                    <label class="option-checkbox">
+                        <input type="checkbox" id="useTrainingData" checked>
+                        <span><i class="fas fa-database"></i> Training Data</span>
+                    </label>
+                    <label class="option-checkbox">
+                        <input type="checkbox" id="useWebSearch">
+                        <span><i class="fas fa-globe"></i> Web Search</span>
+                    </label>
+                    <label class="option-number">
+                        <span>Top K:</span>
+                        <input type="number" id="topK" value="3" min="1" max="10">
+                    </label>
+                </div>
+
+                <!-- Input Wrapper -->
+                <div class="input-wrapper">
+                    <button class="attach-btn" id="attachPdfBtn" title="Upload PDF">
+                        <i class="fas fa-file-upload"></i>
+                    </button>
+                    <button class="attach-btn" id="attachBtn" title="Attach file or image">
+                        <i class="fas fa-paperclip"></i>
+                    </button>
+                    <input type="file" id="fileInput" accept=".pdf,.png,.jpg,.jpeg,.webp,.bmp,.tiff,.gif" hidden>
+                    <textarea 
+                        id="chatInput" 
+                        placeholder="Ask about your data or search the web..."
+                        rows="1"
+                    ></textarea>
+                    <button class="send-btn" id="sendBtn">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Placeholder right column (optional future Docs panel) -->
+        <div class="docs-placeholder" id="docsPlaceholder"></div>
+    </div>
+
+    <!-- Search Engine Page (Tab Content - Hidden by default) -->
+    <div class="tab-content hidden" id="searchEngineTab">
+        <h2 style="color: var(--text-primary); margin-bottom: 24px;">Search Engine</h2>
+        
+        <!-- Search Engine Stats -->
+        <div style="background: var(--bg-secondary); padding: 16px; border-radius: 12px; margin-bottom: 20px;">
+            <h4 style="color: var(--accent); margin: 0 0 12px 0;">Index Statistics</h4>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px;">
+                <div>
+                    <div style="font-size: 1.5rem; font-weight: 700; color: var(--text-primary);" id="indexedDomains">-</div>
+                    <div style="font-size: 0.9rem; color: var(--text-secondary);">Indexed Domains</div>
+                </div>
+                <div>
+                    <div style="font-size: 1.5rem; font-weight: 700; color: var(--text-primary);" id="indexedPages">-</div>
+                    <div style="font-size: 0.9rem; color: var(--text-secondary);">Indexed Pages</div>
+                </div>
+                <div>
+                    <div style="font-size: 1.5rem; font-weight: 700; color: var(--text-primary);" id="indexSize">-</div>
+                    <div style="font-size: 0.9rem; color: var(--text-secondary);">Index Size</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Enhanced Search -->
+        <div style="margin-bottom: 20px;">
+            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--text-primary);">Enhanced Search (Auto-Indexes Websites)</label>
+            <div class="search-controls">
+                <input type="text" id="enhancedSearchQuery" class="search-input" placeholder="Search query...">
+                <button class="btn" onclick="performEnhancedSearch()">
+                    <i class="fas fa-search"></i> Search
+                </button>
+            </div>
+            <div style="margin-top: 8px; display: flex; gap: 16px; align-items: center; font-size: 0.85rem;">
+                <label>
+                    <input type="checkbox" id="autoIndexEnabled" checked> Auto-Index New Websites
+                </label>
+                <label>
+                    Max Pages: <input type="number" id="maxIndexPages" min="5" max="100" value="20" style="width: 60px; padding: 4px; background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 4px; color: var(--text-primary);">
+                </label>
+            </div>
+        </div>
+
+        <!-- Local Search -->
+        <div style="margin-bottom: 20px;">
+            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--text-primary);">Local Search (Indexed Content Only)</label>
+            <div class="search-controls">
+                <input type="text" id="localSearchQuery" class="search-input" placeholder="Search indexed content...">
+                <button class="btn" onclick="performLocalSearch()">
+                    <i class="fas fa-database"></i> Local Search
+                </button>
+            </div>
+        </div>
+
+        <!-- Manual Indexing -->
+        <div style="margin-bottom: 20px;">
+            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--text-primary);">Manual Website Indexing</label>
+            <div class="search-controls">
+                <input type="url" id="manualIndexUrl" class="search-input" placeholder="https://example.com">
+                <button class="btn" onclick="performManualIndexing()">
+                    <i class="fas fa-plus"></i> Index
+                </button>
+            </div>
+            <div style="margin-top: 8px; display: flex; gap: 16px; align-items: center; font-size: 0.85rem;">
+                <label>
+                    Max Pages: <input type="number" id="manualMaxPages" min="5" max="200" value="50" style="width: 60px; padding: 4px; background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 4px; color: var(--text-primary);">
+                </label>
+                <label>
+                    Max Depth: <input type="number" id="manualMaxDepth" min="1" max="5" value="2" style="width: 60px; padding: 4px; background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 4px; color: var(--text-primary);">
+                </label>
+            </div>
+        </div>
+
+        <!-- Index Management -->
+        <div style="margin-bottom: 20px;">
+            <button class="btn" onclick="loadSearchEngineStats()">
+                <i class="fas fa-sync-alt"></i> Refresh Stats
+            </button>
+            <button class="btn btn-secondary" onclick="clearSearchIndex()" style="background: var(--error); margin-left: 8px;">
+                <i class="fas fa-trash"></i> Clear Index
+            </button>
+        </div>
+
+        <!-- Search Results -->
+        <div id="searchEngineResults"></div>
+    </div>
+
+    <!-- Loading Indicator -->
+    <div class="loading-indicator" id="loadingIndicator" style="display: none;">
+        <div class="spinner"></div>
+        <span id="loadingText">Processing...</span>
+    </div>
+
+    <!-- Scripts -->
+    <script src="/static/js/bu_network.js"></script>
+    <script src="/static/js/research.js"></script>
+    <script src="/static/js/conversation_history.js"></script>
+    
+    <script>
+        // Hide welcome screen on first message
+        const originalAddMessage = window.addMessage;
+        let messagesAdded = 0;
+        
+        window.addEventListener('load', function() {
+            const chatMessages = document.getElementById('chatMessages');
+            const welcomeScreen = document.getElementById('welcomeScreen');
+            
+            const observer = new MutationObserver(function(mutations) {
+                if (chatMessages.children.length > 0) {
+                    welcomeScreen.style.display = 'none';
+                    chatMessages.style.display = 'flex';
+                }
+            });
+            
+            observer.observe(chatMessages, { childList: true });
+        });
+    </script>
+</body>
+</html>

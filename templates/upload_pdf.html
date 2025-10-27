@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload PDF - Research Assistant</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/research.css">
+    <style>
+        .upload-area {
+            border: 2px dashed #ccc;
+            border-radius: 5px;
+            padding: 3rem;
+            text-align: center;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        
+        .upload-area:hover {
+            background-color: #f8f9fa;
+            border-color: #007bff;
+        }
+        
+        .upload-area.dragover {
+            background-color: #e8f4ff;
+            border-color: #007bff;
+        }
+        
+        .progress {
+            height: 20px;
+        }
+        
+        .processing-steps {
+            margin-top: 1rem;
+        }
+        
+        .processing-step {
+            display: flex;
+            align-items: center;
+            margin-bottom: 0.5rem;
+        }
+        
+        .step-icon {
+            width: 24px;
+            height: 24px;
+            margin-right: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .step-icon.pending {
+            color: #6c757d;
+        }
+        
+        .step-icon.active {
+            color: #007bff;
+        }
+        
+        .step-icon.success {
+            color: #28a745;
+        }
+        
+        .document-card {
+            transition: transform 0.2s;
+        }
+        
+        .document-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header class="my-4">
+            <nav class="navbar navbar-expand-lg navbar-light bg-light">
+                <div class="container-fluid">
+                    <a class="navbar-brand" href="/">Research Assistant</a>
+                    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                        <span class="navbar-toggler-icon"></span>
+                    </button>
+                    <div class="collapse navbar-collapse" id="navbarNav">
+                        <ul class="navbar-nav">
+                            <li class="nav-item">
+                                <a class="nav-link" href="/research">Chat</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="/pdf-viewer">PDF Viewer</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link active" href="/upload-pdf">Upload PDF</a>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </nav>
+        </header>
+
+        <main>
+            <h1 class="mb-4">Upload PDF Documents</h1>
+            <p class="lead">Upload PDF documents to enhance your research assistant's knowledge base.</p>
+            
+            <div class="row mb-4">
+                <div class="col-lg-8">
+                    <div class="card">
+                        <div class="card-body">
+                            <h2 class="card-title">Upload Document</h2>
+                            <p class="card-text">Drag and drop your PDF file or click to select a file.</p>
+                            
+                            <form id="pdf-upload-form" enctype="multipart/form-data">
+                                <div class="upload-area" id="upload-area">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" fill="currentColor" class="bi bi-file-earmark-pdf mb-3" viewBox="0 0 16 16">
+                                        <path d="M14 14V4.5L9.5 0H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2zM9.5 3A1.5 1.5 0 0 0 11 4.5h2V14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h5.5v2z"/>
+                                        <path d="M4.603 14.087a.81.81 0 0 1-.438-.42c-.195-.388-.13-.776.08-1.102.198-.307.526-.568.897-.787a7.68 7.68 0 0 1 1.482-.645 19.697 19.697 0 0 0 1.062-2.227 7.269 7.269 0 0 1-.43-1.295c-.086-.4-.119-.796-.046-1.136.075-.354.274-.672.65-.823.192-.077.4-.12.602-.077a.7.7 0 0 1 .477.365c.088.164.12.356.127.538.007.188-.012.396-.047.614-.084.51-.27 1.134-.52 1.794a10.954 10.954 0 0 0 .98 1.686 5.753 5.753 0 0 1 1.334.05c.364.066.734.195.96.465.12.144.193.32.2.518.007.192-.047.382-.138.563a1.04 1.04 0 0 1-.354.416.856.856 0 0 1-.51.138c-.331-.014-.654-.196-.933-.417a5.712 5.712 0 0 1-.911-.95 11.651 11.651 0 0 0-1.997.406 11.307 11.307 0 0 1-1.02 1.51c-.292.35-.609.656-.927.787a.793.793 0 0 1-.58.029zm1.379-1.901c-.166.076-.32.156-.459.238-.328.194-.541.383-.647.547-.094.145-.096.25-.04.361.01.022.02.036.026.044a.266.266 0 0 0 .035-.012c.137-.056.355-.235.635-.572a8.18 8.18 0 0 0 .45-.606zm1.64-1.33a12.71 12.71 0 0 1 1.01-.193 11.744 11.744 0 0 1-.51-.858 20.801 20.801 0 0 1-.5 1.05zm2.446.45c.15.163.296.3.435.41.24.19.407.253.498.256a.107.107 0 0 0 .07-.015.307.307 0 0 0 .094-.125.436.436 0 0 0 .059-.2.095.095 0 0 0-.026-.063c-.052-.062-.2-.152-.518-.209a3.876 3.876 0 0 0-.612-.053zM8.078 7.8a6.7 6.7 0 0 0 .2-.828c.031-.188.043-.343.038-.465a.613.613 0 0 0-.032-.198.517.517 0 0 0-.145.04c-.087.035-.158.106-.196.283-.04.192-.03.469.046.822.024.111.054.227.09.346z"/>
+                                    </svg>
+                                    <h4>Drop PDF file here</h4>
+                                    <p>or</p>
+                                    <input type="file" id="file-input" class="d-none" accept=".pdf">
+                                    <button type="button" class="btn btn-primary" id="select-file-btn">Select PDF File</button>
+                                </div>
+                                
+                                <div class="mt-3 d-none" id="upload-progress-container">
+                                    <div class="d-flex justify-content-between">
+                                        <span id="upload-file-name">filename.pdf</span>
+                                        <span id="upload-progress-text">0%</span>
+                                    </div>
+                                    <div class="progress mt-2">
+                                        <div id="upload-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                                    </div>
+                                    
+                                    <div class="processing-steps mt-3 d-none" id="processing-steps">
+                                        <h5>Processing Steps:</h5>
+                                        <div class="processing-step">
+                                            <div class="step-icon pending" id="step-extract">
+                                                <span class="spinner-border spinner-border-sm d-none"></span>
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-circle d-none" viewBox="0 0 16 16">
+                                                    <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
+                                                </svg>
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-check-circle-fill d-none" viewBox="0 0 16 16">
+                                                    <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zm-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/>
+                                                </svg>
+                                            </div>
+                                            <div>Text Extraction</div>
+                                        </div>
+                                        <div class="processing-step">
+                                            <div class="step-icon pending" id="step-ocr">
+                                                <span class="spinner-border spinner-border-sm d-none"></span>
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-circle d-none" viewBox="0 0 16 16">
+                                                    <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
+                                                </svg>
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-check-circle-fill d-none" viewBox="0 0 16 16">
+                                                    <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zm-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/>
+                                                </svg>
+                                            </div>
+                                            <div>OCR Processing</div>
+                                        </div>
+                                        <div class="processing-step">
+                                            <div class="step-icon pending" id="step-chunk">
+                                                <span class="spinner-border spinner-border-sm d-none"></span>
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-circle d-none" viewBox="0 0 16 16">
+                                                    <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
+                                                </svg>
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-check-circle-fill d-none" viewBox="0 0 16 16">
+                                                    <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zm-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/>
+                                                </svg>
+                                            </div>
+                                            <div>Document Chunking</div>
+                                        </div>
+                                        <div class="processing-step">
+                                            <div class="step-icon pending" id="step-embed">
+                                                <span class="spinner-border spinner-border-sm d-none"></span>
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-circle d-none" viewBox="0 0 16 16">
+                                                    <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
+                                                </svg>
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-check-circle-fill d-none" viewBox="0 0 16 16">
+                                                    <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zm-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/>
+                                                </svg>
+                                            </div>
+                                            <div>Vector Embedding</div>
+                                        </div>
+                                        <div class="processing-step">
+                                            <div class="step-icon pending" id="step-store">
+                                                <span class="spinner-border spinner-border-sm d-none"></span>
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-circle d-none" viewBox="0 0 16 16">
+                                                    <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
+                                                </svg>
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-check-circle-fill d-none" viewBox="0 0 16 16">
+                                                    <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zm-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/>
+                                                </svg>
+                                            </div>
+                                            <div>Storing Document</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="alert mt-3 d-none" id="upload-result"></div>
+                                
+                                <div class="mt-3">
+                                    <button type="submit" class="btn btn-success" id="upload-btn">Upload</button>
+                                    <button type="button" class="btn btn-secondary" id="cancel-btn">Cancel</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-lg-4">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>Enhanced PDF Processing</h3>
+                        </div>
+                        <div class="card-body">
+                            <h5>Features</h5>
+                            <ul class="list-group list-group-flush">
+                                <li class="list-group-item">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-check-circle-fill text-success me-2" viewBox="0 0 16 16">
+                                        <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zm-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/>
+                                    </svg>
+                                    Full text extraction
+                                </li>
+                                <li class="list-group-item">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-check-circle-fill text-success me-2" viewBox="0 0 16 16">
+                                        <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zm-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/>
+                                    </svg>
+                                    OCR for scanned documents
+                                </li>
+                                <li class="list-group-item">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-check-circle-fill text-success me-2" viewBox="0 0 16 16">
+                                        <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zm-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/>
+                                    </svg>
+                                    GPU accelerated processing
+                                </li>
+                                <li class="list-group-item">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-check-circle-fill text-success me-2" viewBox="0 0 16 16">
+                                        <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zm-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/>
+                                    </svg>
+                                    Page-level retrieval
+                                </li>
+                                <li class="list-group-item">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-check-circle-fill text-success me-2" viewBox="0 0 16 16">
+                                        <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zm-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/>
+                                    </svg>
+                                    Table extraction
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="row">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>Recently Uploaded Documents</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="row" id="recent-docs-container">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <footer class="mt-5 pt-3 text-center text-muted border-top">
+            <p>&copy; 2025 Research Assistant</p>
+        </footer>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const uploadArea = document.getElementById('upload-area');
+            const fileInput = document.getElementById('file-input');
+            const selectFileBtn = document.getElementById('select-file-btn');
+            const uploadBtn = document.getElementById('upload-btn');
+            const cancelBtn = document.getElementById('cancel-btn');
+            const uploadForm = document.getElementById('pdf-upload-form');
+            const progressContainer = document.getElementById('upload-progress-container');
+            const progressBar = document.getElementById('upload-progress-bar');
+            const progressText = document.getElementById('upload-progress-text');
+            const fileName = document.getElementById('upload-file-name');
+            const uploadResult = document.getElementById('upload-result');
+            const processingSteps = document.getElementById('processing-steps');
+            
+            // Step elements
+            const stepExtract = document.getElementById('step-extract');
+            const stepOcr = document.getElementById('step-ocr');
+            const stepChunk = document.getElementById('step-chunk');
+            const stepEmbed = document.getElementById('step-embed');
+            const stepStore = document.getElementById('step-store');
+            
+            let selectedFile = null;
+            
+            // Drag and drop events
+            uploadArea.addEventListener('dragover', e => {
+                e.preventDefault();
+                uploadArea.classList.add('dragover');
+            });
+            
+            uploadArea.addEventListener('dragleave', () => {
+                uploadArea.classList.remove('dragover');
+            });
+            
+            uploadArea.addEventListener('drop', e => {
+                e.preventDefault();
+                uploadArea.classList.remove('dragover');
+                
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                    handleFileSelect(files[0]);
+                }
+            });
+            
+            // Click to select file
+            selectFileBtn.addEventListener('click', () => {
+                fileInput.click();
+            });
+            
+            fileInput.addEventListener('change', () => {
+                if (fileInput.files.length > 0) {
+                    handleFileSelect(fileInput.files[0]);
+                }
+            });
+            
+            // Handle file selection
+            function handleFileSelect(file) {
+                if (!file.name.toLowerCase().endsWith('.pdf')) {
+                    showResult('Only PDF files are supported.', 'danger');
+                    return;
+                }
+                
+                selectedFile = file;
+                fileName.textContent = file.name;
+                progressContainer.classList.remove('d-none');
+                uploadBtn.disabled = false;
+            }
+            
+            // Cancel upload
+            cancelBtn.addEventListener('click', () => {
+                resetUploadForm();
+            });
+            
+            // Submit form
+            uploadForm.addEventListener('submit', e => {
+                e.preventDefault();
+                
+                if (!selectedFile) {
+                    showResult('Please select a PDF file.', 'danger');
+                    return;
+                }
+                
+                uploadFile();
+            });
+            
+            // Upload file with progress
+            function uploadFile() {
+                uploadBtn.disabled = true;
+                cancelBtn.disabled = true;
+                uploadResult.classList.add('d-none');
+                processingSteps.classList.remove('d-none');
+                
+                // Reset step indicators
+                setStepStatus(stepExtract, 'pending');
+                setStepStatus(stepOcr, 'pending');
+                setStepStatus(stepChunk, 'pending');
+                setStepStatus(stepEmbed, 'pending');
+                setStepStatus(stepStore, 'pending');
+                
+                const formData = new FormData();
+                formData.append('file', selectedFile);
+                
+                const xhr = new XMLHttpRequest();
+                
+                xhr.upload.addEventListener('progress', e => {
+                    if (e.lengthComputable) {
+                        const percentComplete = Math.round((e.loaded / e.total) * 100);
+                        progressBar.style.width = percentComplete + '%';
+                        progressText.textContent = percentComplete + '%';
+                    }
+                });
+                
+                xhr.addEventListener('load', () => {
+                    if (xhr.status === 200) {
+                        try {
+                            const response = JSON.parse(xhr.responseText);
+                            
+                            if (response.success) {
+                                // Simulate processing steps (in a real app, these would be progress events from the server)
+                                simulateProcessingSteps()
+                                    .then(() => {
+                                        showResult(`File uploaded successfully! ${response.page_count} pages processed.`, 'success');
+                                        resetUploadForm();
+                                        
+                                        // Refresh document list
+                                        loadRecentDocuments();
+                                        
+                                        // Add view button
+                                        const viewBtn = document.createElement('a');
+                                        viewBtn.href = `/pdf-viewer?document=${response.document_id}`;
+                                        viewBtn.className = 'btn btn-primary ms-2';
+                                        viewBtn.textContent = 'View Document';
+                                        uploadResult.appendChild(viewBtn);
+                                    });
+                            } else {
+                                showResult(`Upload failed: ${response.error}`, 'danger');
+                                resetProcessing();
+                            }
+                        } catch (e) {
+                            showResult('Error processing server response.', 'danger');
+                            resetProcessing();
+                        }
+                    } else {
+                        showResult('Upload failed. Please try again.', 'danger');
+                        resetProcessing();
+                    }
+                });
+                
+                xhr.addEventListener('error', () => {
+                    showResult('Upload failed. Please try again.', 'danger');
+                    resetProcessing();
+                });
+                
+                xhr.open('POST', '/api/rag/upload-pdf');
+                xhr.send(formData);
+                
+                // Start extraction step immediately
+                setStepStatus(stepExtract, 'active');
+            }
+            
+            // Helper functions
+            function showResult(message, type) {
+                uploadResult.innerHTML = message;
+                uploadResult.className = `alert alert-${type} mt-3`;
+                uploadResult.classList.remove('d-none');
+            }
+            
+            function resetUploadForm() {
+                selectedFile = null;
+                fileInput.value = '';
+                progressContainer.classList.add('d-none');
+                uploadBtn.disabled = false;
+                cancelBtn.disabled = false;
+                progressBar.style.width = '0%';
+                progressText.textContent = '0%';
+                processingSteps.classList.add('d-none');
+            }
+            
+            function resetProcessing() {
+                uploadBtn.disabled = false;
+                cancelBtn.disabled = false;
+            }
+            
+            function setStepStatus(element, status) {
+                // Reset all states
+                element.querySelectorAll('*').forEach(el => el.classList.add('d-none'));
+                element.classList.remove('pending', 'active', 'success');
+                
+                // Set new state
+                if (status === 'pending') {
+                    element.classList.add('pending');
+                    element.querySelector('.bi-circle').classList.remove('d-none');
+                } else if (status === 'active') {
+                    element.classList.add('active');
+                    element.querySelector('.spinner-border').classList.remove('d-none');
+                } else if (status === 'success') {
+                    element.classList.add('success');
+                    element.querySelector('.bi-check-circle-fill').classList.remove('d-none');
+                }
+            }
+            
+            // Simulate processing steps
+            async function simulateProcessingSteps() {
+                // In a real app, these would be progress events from the server
+                await sleep(1000);
+                setStepStatus(stepExtract, 'success');
+                setStepStatus(stepOcr, 'active');
+                
+                await sleep(1500);
+                setStepStatus(stepOcr, 'success');
+                setStepStatus(stepChunk, 'active');
+                
+                await sleep(1000);
+                setStepStatus(stepChunk, 'success');
+                setStepStatus(stepEmbed, 'active');
+                
+                await sleep(2000);
+                setStepStatus(stepEmbed, 'success');
+                setStepStatus(stepStore, 'active');
+                
+                await sleep(1000);
+                setStepStatus(stepStore, 'success');
+            }
+            
+            function sleep(ms) {
+                return new Promise(resolve => setTimeout(resolve, ms));
+            }
+            
+            // Load recent documents
+            function loadRecentDocuments() {
+                const container = document.getElementById('recent-docs-container');
+                container.innerHTML = '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div>';
+                
+                fetch('/api/pdf/documents?limit=6')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success && data.documents.length > 0) {
+                            let html = '';
+                            
+                            data.documents.forEach(doc => {
+                                html += `
+                                    <div class="col-md-4 mb-3">
+                                        <div class="card h-100 document-card">
+                                            <div class="card-body">
+                                                <h5 class="card-title">${doc.title || doc.filename}</h5>
+                                                <p class="card-text">
+                                                    <small class="text-muted">
+                                                        ${doc.page_count} pages • Uploaded on ${new Date(doc.upload_time).toLocaleDateString()}
+                                                    </small>
+                                                </p>
+                                            </div>
+                                            <div class="card-footer bg-transparent border-top-0">
+                                                <a href="/pdf-viewer?document=${doc.document_id}" class="btn btn-sm btn-primary">View</a>
+                                                <a href="/research?document=${doc.document_id}" class="btn btn-sm btn-outline-secondary">Research</a>
+                                            </div>
+                                        </div>
+                                    </div>
+                                `;
+                            });
+                            
+                            container.innerHTML = html;
+                        } else {
+                            container.innerHTML = '<div class="col-12"><p>No documents found. Upload a PDF to get started.</p></div>';
+                        }
+                    })
+                    .catch(error => {
+                        container.innerHTML = `<div class="col-12"><p class="text-danger">Error loading documents: ${error.message}</p></div>`;
+                    });
+            }
+            
+            // Load documents on page load
+            loadRecentDocuments();
+        });
+    </script>
+</body>
+</html>

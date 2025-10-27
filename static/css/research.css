@@ -1,0 +1,1083 @@
+/* FortiResearch LLM - Dark Red Fortinet Theme */
+/* Based on /pcap modern UI/UX patterns */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+:root {
+    /* Fortinet Dark Red Theme */
+    --primary: #c92a2a;            /* Dark red (primary accent) */
+    --primary-dark: #991b1b;       /* Darker red */
+    --primary-light: #e03131;      /* Light red */
+    --accent: #c92a2a;             /* Dark red accent */
+    --accent-hover: #991b1b;       /* Darker red hover */
+    
+    /* Dark Grey Backgrounds */
+    --bg-primary: #1e1e1e;         /* Dark grey background */
+    --bg-secondary: #2d2d2d;       /* Slightly lighter grey */
+    --bg-tertiary: #3a3a3a;        /* Card backgrounds */
+    --surface: #2d2d2d;            /* Dark surface */
+    --surface-hover: #3a3a3a;      /* Lighter surface */
+    --card-bg: #2d2d2d;            /* Dark card */
+    --card-hover: #3a3a3a;         /* Lighter card */
+    
+    /* Text Colors */
+    --text-primary: #e0e0e0;       /* Light grey text */
+    --text-secondary: #a0a0a0;     /* Muted text */
+    --text-muted: #6b6b6b;         /* Very muted text */
+    
+    /* Borders */
+    --border: #404040;             /* Subtle borders */
+    --border-light: #505050;       /* Lighter borders */
+    
+    /* Message Bubbles */
+    --user-message-bg: #7a2e2e;    /* Red-tinted user bubbles */
+    --ai-message-bg: #2d2d2d;      /* Dark grey AI bubbles */
+    
+    /* Status Colors */
+    --success: #10b981;
+    --warning: #ffa500;
+    --error: #ef4444;
+    --info: #c92a2a;
+    
+    /* Gradients */
+    --gradient-primary: linear-gradient(135deg, #c92a2a 0%, #991b1b 100%);
+    --gradient-secondary: linear-gradient(135deg, #e03131 0%, #c92a2a 100%);
+    --gradient-accent: linear-gradient(135deg, #c92a2a 0%, #e03131 100%);
+    
+    /* Shadows */
+    --shadow-sm: 0 2px 4px rgba(0,0,0,0.3);
+    --shadow-md: 0 4px 8px rgba(0,0,0,0.4);
+    --shadow-lg: 0 8px 16px rgba(0,0,0,0.5);
+}
+
+body {
+    font-family: 'Inter', sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    min-height: 100vh;
+    overflow: hidden;
+    line-height: 1.6;
+    position: relative;
+}
+
+/* Network Background */
+#bu_network-svg {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: -1;
+    background: var(--bg-primary);
+}
+
+/* Top Header Bar (matching /pcap) */
+.header {
+    height: 60px;
+    background: var(--bg-secondary);
+    backdrop-filter: blur(10px);
+    padding: 0 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--border);
+    box-shadow: var(--shadow-sm);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    flex-shrink: 0;
+}
+
+.logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    flex-shrink: 0;
+}
+
+.logo img {
+    height: auto;
+}
+
+.logo-text {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.header-controls {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-shrink: 0;
+}
+
+/* Model Selector (matching /pcap) */
+.model-selector {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    cursor: pointer;
+    outline: none;
+    transition: all 0.2s ease;
+}
+
+.model-selector:hover {
+    background: var(--surface-hover);
+    border-color: var(--accent);
+}
+
+.model-selector:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(201, 42, 42, 0.1);
+}
+
+.model-selector option {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+}
+
+/* New Chat Button in Header */
+.new-chat-btn {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    padding: 8px 16px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-size: 0.95rem;
+}
+
+.new-chat-btn:hover {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: white;
+}
+
+.nav-link {
+    color: var(--text-secondary);
+    text-decoration: none;
+    font-size: 1.2rem;
+    transition: color 0.2s ease;
+}
+
+.nav-link:hover {
+    color: var(--text-primary);
+}
+
+/* Main Layout - No Sidebar, Centered Chat */
+.main-container {
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 60px);
+    overflow: hidden;
+    width: 100%;
+}
+
+/* Hide sidebar completely */
+.sidebar {
+    display: none !important;
+}
+
+/* Chat Container (matching /pcap structure) */
+.chat-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    max-width: 900px;
+    margin: 0 auto;
+    width: 100%;
+    position: relative;
+    height: 100%;
+    overflow: hidden;
+}
+
+/* Welcome Screen */
+.welcome-screen {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+}
+
+.welcome-content {
+    text-align: center;
+    max-width: 600px;
+}
+
+.welcome-icon {
+    font-size: 4rem;
+    color: var(--accent);
+    margin-bottom: 24px;
+    display: block;
+}
+
+.welcome-content h2 {
+    font-size: 2rem;
+    margin-bottom: 16px;
+    color: var(--text-primary);
+}
+
+.welcome-content p {
+    color: var(--text-secondary);
+    font-size: 1.1rem;
+    margin-bottom: 32px;
+}
+
+.welcome-features {
+    display: flex;
+    justify-content: center;
+    gap: 32px;
+    margin-top: 32px;
+}
+
+.feature-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-secondary);
+}
+
+.feature-item i {
+    font-size: 1.5rem;
+    color: var(--accent);
+}
+
+/* Chat Messages Area */
+.chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    scroll-behavior: smooth;
+    min-height: 0;
+}
+
+.message {
+    display: flex;
+    gap: 12px;
+    animation: fadeInUp 0.3s ease;
+}
+
+.message.user {
+    flex-direction: row-reverse;
+}
+
+.message-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 0.9rem;
+}
+
+.message.assistant .message-avatar {
+    background: transparent;
+    color: var(--text-primary); /* You may need to adjust the text color too */
+}
+
+.message.user .message-avatar {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+.message-content {
+    background: var(--ai-message-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 16px;
+    max-width: 70%;
+    line-height: 1.6;
+    position: relative;
+}
+
+/* Copy Message Button */
+.copy-message-btn {
+    position: absolute;
+    bottom: 8px;
+    right: 8px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 10px;
+    cursor: pointer;
+    opacity: 0;
+    transition: all 0.2s ease;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    z-index: 10;
+}
+
+.message-content:hover .copy-message-btn {
+    opacity: 1;
+}
+
+.copy-message-btn:hover {
+    background: var(--surface);
+    color: var(--accent);
+    border-color: var(--accent);
+    transform: scale(1.05);
+}
+
+.copy-message-btn.copied {
+    color: var(--success);
+    border-color: var(--success);
+}
+
+.copy-message-btn:active {
+    transform: scale(0.95);
+}
+
+.message.user .message-avatar {
+    background: transparent;
+    color: var(--text-primary);
+}
+
+.message-content p {
+    margin: 0 0 8px 0;
+}
+
+.message-content p:last-child {
+    margin-bottom: 0;
+}
+
+.message-content code {
+    background: var(--bg-tertiary);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.9em;
+}
+
+.message-content pre {
+    background: var(--bg-tertiary);
+    padding: 12px;
+    border-radius: 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    margin: 8px 0;
+    max-width: 100%;
+    /* Prevent horizontal scrollbar flicker during streaming */
+    min-height: 40px;
+}
+
+.message-content pre code {
+    background: none;
+    padding: 0;
+    display: block;
+    white-space: pre;
+    word-wrap: normal;
+    overflow-wrap: normal;
+    /* Smooth scrollbar appearance */
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) var(--bg-tertiary);
+}
+
+/* WebKit scrollbar styling for code blocks */
+.message-content pre::-webkit-scrollbar {
+    height: 8px;
+}
+
+.message-content pre::-webkit-scrollbar-track {
+    background: var(--bg-tertiary);
+    border-radius: 4px;
+}
+
+.message-content pre::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 4px;
+}
+
+.message-content pre::-webkit-scrollbar-thumb:hover {
+    background: var(--text-secondary);
+}
+
+/* Typing Indicator with Dark Red Dots */
+.typing-indicator {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    padding: 8px 0;
+}
+
+.typing-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+    animation: typing 1.4s infinite ease-in-out;
+}
+
+.typing-dot:nth-child(1) { animation-delay: -0.32s; }
+.typing-dot:nth-child(2) { animation-delay: -0.16s; }
+
+@keyframes typing {
+    0%, 80%, 100% { transform: scale(0.8); opacity: 0.5; }
+    40% { transform: scale(1); opacity: 1; }
+}
+
+/* Jump to Bottom Button */
+.jump-to-bottom {
+    position: absolute;
+    bottom: 80px;
+    right: 24px;
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: var(--shadow-lg);
+    transition: all 0.2s ease;
+    z-index: 10;
+}
+
+.jump-to-bottom:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 24px rgba(201, 42, 42, 0.4);
+}
+
+.jump-to-bottom.hidden {
+    display: none;
+}
+
+/* Chat Input Section */
+.chat-input-area {
+    border-top: 1px solid var(--border);
+    padding: 16px 24px;
+    background: var(--bg-secondary);
+    flex-shrink: 0;
+}
+
+/* Chat Options (Checkboxes) */
+.chat-options {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 12px;
+    font-size: 0.9rem;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.option-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    color: var(--text-secondary);
+    transition: color 0.2s ease;
+    user-select: none;
+}
+
+.option-checkbox:hover {
+    color: var(--text-primary);
+}
+
+.option-checkbox input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    accent-color: var(--accent);
+}
+
+.option-checkbox span {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.option-number {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-secondary);
+}
+
+.option-number input[type="number"] {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    padding: 4px 8px;
+    border-radius: 6px;
+    width: 60px;
+    font-size: 0.9rem;
+    outline: none;
+}
+
+.option-number input[type="number"]:focus {
+    border-color: var(--accent);
+}
+
+/* Input Wrapper */
+.input-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 8px;
+    transition: border-color 0.2s ease;
+}
+
+.input-wrapper:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(201, 42, 42, 0.1);
+}
+
+.attach-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-size: 1.1rem;
+}
+
+.attach-btn:hover {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+}
+
+#chatInput {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: var(--text-primary);
+    padding: 8px;
+    font-size: 1rem;
+    resize: none;
+    max-height: 120px;
+    outline: none;
+    font-family: inherit;
+    line-height: 1.5;
+}
+
+#chatInput::placeholder {
+    color: var(--text-muted);
+}
+
+.send-btn {
+    background: var(--accent);
+    border: none;
+    border-radius: 8px;
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: white;
+    transition: all 0.2s ease;
+}
+
+.send-btn:hover:not(:disabled) {
+    background: var(--accent-hover);
+    transform: scale(1.05);
+}
+
+.send-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* Stop button styling (red when showing stop icon) */
+.send-btn:has(.fa-stop) {
+    background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);
+    animation: pulse-red 2s infinite;
+}
+
+.send-btn:has(.fa-stop):hover {
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+    transform: scale(1.1);
+}
+
+@keyframes pulse-red {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.7);
+    }
+    50% {
+        box-shadow: 0 0 0 8px rgba(220, 38, 38, 0);
+    }
+}
+
+/* Loading Indicator */
+.loading-indicator {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px 32px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    box-shadow: var(--shadow-lg);
+    z-index: 1000;
+}
+
+.spinner {
+    width: 24px;
+    height: 24px;
+    border: 3px solid var(--bg-tertiary);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+#loadingText {
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+/* Scrollbar Styles */
+.chat-messages::-webkit-scrollbar {
+    width: 10px;
+}
+
+.chat-messages::-webkit-scrollbar-track {
+    background: var(--bg-primary);
+    border-radius: 5px;
+}
+
+.chat-messages::-webkit-scrollbar-thumb {
+    background: var(--accent);
+    border-radius: 5px;
+    border: 2px solid var(--bg-primary);
+}
+
+.chat-messages::-webkit-scrollbar-thumb:hover {
+    background: var(--accent-hover);
+}
+
+/* Animations */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Toast Notifications */
+.toast {
+    position: fixed;
+    top: 80px;
+    right: 24px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 20px;
+    min-width: 300px;
+    box-shadow: var(--shadow-lg);
+    z-index: 2000;
+    animation: slideInRight 0.3s ease;
+}
+
+.toast.error {
+    border-left: 4px solid var(--error);
+}
+
+.toast.success {
+    border-left: 4px solid var(--success);
+}
+
+.toast.info {
+    border-left: 4px solid var(--accent);
+}
+
+@keyframes slideInRight {
+    from {
+        transform: translateX(400px);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+/* Search Engine Tab Styles */
+.tab-content {
+    padding: 24px;
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    margin: 16px;
+}
+
+.tab-content.hidden {
+    display: none;
+}
+
+.search-controls {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+
+.search-input {
+    flex: 1;
+    min-width: 250px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    outline: none;
+}
+
+.search-input:focus {
+    border-color: var(--accent);
+}
+
+.btn {
+    padding: 10px 20px;
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.btn:hover {
+    background: var(--accent-hover);
+    transform: translateY(-2px);
+}
+
+.btn-secondary {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+}
+
+.btn-secondary:hover {
+    background: var(--surface-hover);
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .header {
+        padding: 0 16px;
+    }
+
+    .chat-container {
+        max-width: 100%;
+    }
+
+    .chat-input-area {
+        padding: 12px 16px;
+    }
+
+    .chat-options {
+        font-size: 0.85rem;
+        gap: 12px;
+    }
+
+    .message-content {
+        max-width: 85%;
+    }
+
+    .welcome-features {
+        flex-direction: column;
+        gap: 20px;
+    }
+}
+
+@media (max-width: 480px) {
+    .logo-text {
+        font-size: 0.9rem;
+    }
+
+    .model-selector {
+        font-size: 0.85rem;
+        padding: 6px 12px;
+    }
+
+    .chat-options {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+
+    .message-content {
+        max-width: 90%;
+    }
+}
+
+/* Utility Classes */
+.hidden {
+    display: none !important;
+}
+
+.text-center {
+    text-align: center;
+}
+
+.mt-4 {
+    margin-top: 16px;
+}
+
+.mb-4 {
+    margin-bottom: 16px;
+}
+
+/* Streaming cursor animation */
+.streaming-cursor {
+    display: inline-block;
+    width: 2px;
+    height: 1em;
+    background-color: var(--accent);
+    margin-left: 2px;
+    animation: blink 1s infinite;
+}
+
+@keyframes blink {
+    0%, 49% {
+        opacity: 1;
+    }
+    50%, 100% {
+        opacity: 0;
+    }
+}
+
+/* File upload display */
+.attached-file {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: rgba(201, 42, 42, 0.15);
+    border: 1px solid rgba(201, 42, 42, 0.4);
+    border-radius: 10px;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    margin-top: 8px;
+}
+
+.attached-file-remove {
+    color: var(--error);
+    cursor: pointer;
+    font-size: 1rem;
+}
+
+/* ============================================
+   Enhanced Airplane Takeoff Animation
+   ============================================ */
+
+/* Airplane element */
+.airplane-animation {
+    position: fixed;
+    width: 60px;
+    height: 60px;
+    pointer-events: none;
+    z-index: 9999;
+    transition: none;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+}
+
+/* Smoke trail effect */
+.smoke-trail {
+    position: fixed;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(200, 200, 200, 0.6) 0%, rgba(150, 150, 150, 0) 70%);
+    pointer-events: none;
+    z-index: 9998;
+}
+
+@keyframes smoke-dissipate {
+    0% {
+        transform: scale(0.5);
+        opacity: 0.7;
+    }
+    50% {
+        transform: scale(1.2);
+        opacity: 0.4;
+    }
+    100% {
+        transform: scale(2);
+        opacity: 0;
+    }
+}
+
+.smoke-puff {
+    animation: smoke-dissipate 1.5s ease-out forwards;
+}
+
+/* Trajectory 1: Straight ascent */
+@keyframes takeoff-straight {
+    0% {
+        transform: translate(0, 0) rotate(0deg) scale(1);
+        opacity: 1;
+    }
+    50% {
+        transform: translate(10px, -50vh) rotate(0deg) scale(1.15);
+        opacity: 1;
+    }
+    100% {
+        transform: translate(20px, -120vh) rotate(0deg) scale(0.8);
+        opacity: 0;
+    }
+}
+
+/* Trajectory 2: Curve left */
+@keyframes takeoff-curve-left {
+    0% {
+        transform: translate(0, 0) rotate(-5deg) scale(1);
+        opacity: 1;
+    }
+    30% {
+        transform: translate(-15px, -30vh) rotate(-15deg) scale(1.1);
+        opacity: 1;
+    }
+    70% {
+        transform: translate(-5px, -70vh) rotate(-10deg) scale(1);
+        opacity: 1;
+    }
+    100% {
+        transform: translate(10px, -120vh) rotate(-20deg) scale(0.7);
+        opacity: 0;
+    }
+}
+
+/* Trajectory 3: Curve right */
+@keyframes takeoff-curve-right {
+    0% {
+        transform: translate(0, 0) rotate(-5deg) scale(1);
+        opacity: 1;
+    }
+    30% {
+        transform: translate(30px, -30vh) rotate(-8deg) scale(1.1);
+        opacity: 1;
+    }
+    70% {
+        transform: translate(50px, -70vh) rotate(-15deg) scale(1);
+        opacity: 1;
+    }
+    100% {
+        transform: translate(40px, -120vh) rotate(-22deg) scale(0.7);
+        opacity: 0;
+    }
+}
+
+/* Trajectory 4: Zigzag */
+@keyframes takeoff-zigzag {
+    0% {
+        transform: translate(0, 0) rotate(-5deg) scale(1);
+        opacity: 1;
+    }
+    25% {
+        transform: translate(-20px, -25vh) rotate(-12deg) scale(1.08);
+        opacity: 1;
+    }
+    50% {
+        transform: translate(20px, -50vh) rotate(-8deg) scale(1.12);
+        opacity: 1;
+    }
+    75% {
+        transform: translate(-10px, -75vh) rotate(-16deg) scale(0.95);
+        opacity: 1;
+    }
+    100% {
+        transform: translate(15px, -120vh) rotate(-20deg) scale(0.75);
+        opacity: 0;
+    }
+}
+
+/* Trajectory 5: Spiral */
+@keyframes takeoff-spiral {
+    0% {
+        transform: translate(0, 0) rotate(-5deg) scale(1);
+        opacity: 1;
+    }
+    20% {
+        transform: translate(25px, -20vh) rotate(5deg) scale(1.05);
+        opacity: 1;
+    }
+    40% {
+        transform: translate(-15px, -40vh) rotate(-18deg) scale(1.1);
+        opacity: 1;
+    }
+    60% {
+        transform: translate(30px, -60vh) rotate(-5deg) scale(1.05);
+        opacity: 1;
+    }
+    80% {
+        transform: translate(0px, -80vh) rotate(-20deg) scale(0.9);
+        opacity: 1;
+    }
+    100% {
+        transform: translate(20px, -120vh) rotate(-25deg) scale(0.7);
+        opacity: 0;
+    }
+}
+
+/* Apply trajectory classes */
+.airplane-straight {
+    animation: takeoff-straight var(--duration, 2s) ease-in-out forwards;
+}
+
+.airplane-curve-left {
+    animation: takeoff-curve-left var(--duration, 2.2s) ease-in-out forwards;
+}
+
+.airplane-curve-right {
+    animation: takeoff-curve-right var(--duration, 2.2s) ease-in-out forwards;
+}
+
+.airplane-zigzag {
+    animation: takeoff-zigzag var(--duration, 2.5s) ease-in-out forwards;
+}
+
+.airplane-spiral {
+    animation: takeoff-spiral var(--duration, 2.8s) ease-in-out forwards;
+}
+
