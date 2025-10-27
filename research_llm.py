@@ -9,6 +9,14 @@ import json
 from typing import List, Tuple, Optional
 from pathlib import Path
 
+# Set up HuggingFace token for model downloads
+hf_token = os.getenv("HF_TOKEN")
+if hf_token:
+    os.environ["HUGGINGFACE_HUB_TOKEN"] = hf_token
+    print("INFO: HuggingFace token configured for model downloads")
+else:
+    print("WARNING: HF_TOKEN not found in environment - some models may fail to download")
+
 # Core dependencies
 import chromadb
 from chromadb.config import Settings
@@ -42,6 +50,14 @@ except ImportError:
     SENTENCE_TRANSFORMERS_AVAILABLE = False
     print("WARNING: sentence-transformers not installed. Install with: pip install sentence-transformers")
 
+try:
+    import torch
+    from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
+    TRANSFORMERS_AVAILABLE = True
+except ImportError:
+    TRANSFORMERS_AVAILABLE = False
+    print("WARNING: transformers not installed. Install with: pip install transformers torch")
+
 # Configuration defaults
 DEFAULTS = {
     "PERSIST_DIR": "vector_store",
@@ -50,6 +66,7 @@ DEFAULTS = {
     "EMBED_MODEL_LOCAL": "all-MiniLM-L6-v2",
     "LLM_PROVIDER": "anthropic",
     "ANTHROPIC_MODEL": "claude-3-haiku-20240307",
+    "WIZARDLM_MODEL": "QuixiAI/WizardLM-13B-Uncensored",
     "CHUNK_SIZE": 1200,
     "CHUNK_OVERLAP": 200,
 
@@ -92,14 +109,20 @@ class LocalEmbedder:
             raise RuntimeError("sentence-transformers not installed")
         
         try:
-            # Try GPU first
-            self.model = SentenceTransformer(model_name)
+            # Try GPU first with HF token if available
+            if hf_token:
+                self.model = SentenceTransformer(model_name, token=hf_token)
+            else:
+                self.model = SentenceTransformer(model_name)
             print(f"INFO: Using local embeddings: {model_name}")
             print(f"INFO: Use pytorch device_name: {self.model.device}")
         except Exception as e:
             if "CUDA" in str(e):
                 print(f"WARNING: CUDA error with embeddings, falling back to CPU: {e}")
-                self.model = SentenceTransformer(model_name, device='cpu')
+                if hf_token:
+                    self.model = SentenceTransformer(model_name, device='cpu', token=hf_token)
+                else:
+                    self.model = SentenceTransformer(model_name, device='cpu')
                 print(f"INFO: Using local embeddings on CPU: {model_name}")
             else:
                 raise e
@@ -192,6 +215,122 @@ class AnthropicLLM:
             print(f"ERROR: Anthropic streaming failed: {e}")
             yield f"Error: {str(e)}"
 
+
+class WizardLMLLM:
+    """WizardLM local LLM interface using transformers."""
+
+    def __init__(self, model_name: Optional[str] = None, device: str = "auto"):
+        if not TRANSFORMERS_AVAILABLE:
+            raise RuntimeError("transformers package not installed")
+
+        # Get model name from config or environment
+        final_model_name = model_name or os.getenv("WIZARDLM_MODEL") or DEFAULTS.get("WIZARDLM_MODEL")
+        if not final_model_name:
+            raise RuntimeError("WizardLM model not specified")
+
+        self.model_name = final_model_name
+        self.device = device
+        self.model = None
+        self.tokenizer = None
+        
+        print(f"INFO: Initializing WizardLM model: {self.model_name}")
+        self._load_model()
+
+    def _load_model(self):
+        """Load the WizardLM model and tokenizer."""
+        try:
+            # Configure quantization for memory efficiency
+            quantization_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_compute_dtype=torch.float16,
+                bnb_4bit_use_double_quant=True,
+            )
+
+            # Load tokenizer
+            print("INFO: Loading tokenizer...")
+            self.tokenizer = AutoTokenizer.from_pretrained(
+                self.model_name,
+                token=hf_token,
+                trust_remote_code=True
+            )
+            
+            # Set pad token if not set
+            if self.tokenizer.pad_token is None:
+                self.tokenizer.pad_token = self.tokenizer.eos_token
+
+            # Load model with quantization
+            print("INFO: Loading model (this may take a while)...")
+            self.model = AutoModelForCausalLM.from_pretrained(
+                self.model_name,
+                quantization_config=quantization_config,
+                device_map=self.device,
+                token=hf_token,
+                trust_remote_code=True,
+                torch_dtype=torch.float16
+            )
+            
+            print(f"INFO: WizardLM model loaded successfully on device: {self.model.device}")
+            
+        except Exception as e:
+            print(f"ERROR: Failed to load WizardLM model: {e}")
+            raise
+
+    def generate(self, prompt: str, system: Optional[str] = None, max_tokens: int = 512, messages: Optional[List] = None) -> str:
+        """Generate response from WizardLM."""
+        try:
+            # Prepare the input text
+            if system:
+                input_text = f"### System:\n{system}\n\n### Human:\n{prompt}\n\n### Assistant:\n"
+            else:
+                input_text = f"### Human:\n{prompt}\n\n### Assistant:\n"
+
+            # Tokenize input
+            inputs = self.tokenizer.encode(input_text, return_tensors="pt", truncation=True, max_length=2048)
+            inputs = inputs.to(self.model.device)
+
+            # Generate response
+            with torch.no_grad():
+                outputs = self.model.generate(
+                    inputs,
+                    max_new_tokens=max_tokens,
+                    temperature=0.7,
+                    top_p=0.9,
+                    do_sample=True,
+                    pad_token_id=self.tokenizer.eos_token_id,
+                    eos_token_id=self.tokenizer.eos_token_id,
+                    repetition_penalty=1.1
+                )
+
+            # Decode response
+            response = self.tokenizer.decode(outputs[0][inputs.shape[1]:], skip_special_tokens=True)
+            
+            # Clean up response
+            response = response.strip()
+            if response.startswith("### Assistant:"):
+                response = response[13:].strip()
+            
+            return response
+
+        except Exception as e:
+            print(f"ERROR: WizardLM generation failed: {e}")
+            return f"Error generating response: {str(e)}"
+
+    def generate_stream(self, prompt: str, system: Optional[str] = None, max_tokens: int = 512, messages: Optional[List] = None):
+        """Generate streaming response from WizardLM."""
+        try:
+            # For now, generate the full response and yield it word by word
+            # In a more sophisticated implementation, you could use streaming generation
+            response = self.generate(prompt, system, max_tokens, messages)
+            
+            # Split into words and yield them
+            words = response.split()
+            for word in words:
+                yield word + " "
+                
+        except Exception as e:
+            print(f"ERROR: WizardLM streaming failed: {e}")
+            yield f"Error: {str(e)}"
 
 
 def chunk_text(text: str, chunk_size: int, overlap: int) -> List[str]:

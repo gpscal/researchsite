@@ -1,0 +1,18 @@
+[Unit]
+Description=Research Site Flask Application
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/researchsite
+Environment=PORT=80
+Environment=PYTHONPATH=/researchsite
+Environment=HF_HOME=/tmp/hf_cache
+Environment=TRANSFORMERS_CACHE=/tmp/hf_cache
+ExecStart=/researchsite/start.sh
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

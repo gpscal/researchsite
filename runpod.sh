@@ -12,13 +12,15 @@ APP_DIR="$(cd "$(dirname "$0")" && pwd)"
 RUN_DIR="/var/run/researchsite"
 LOG_DIR="/var/log/researchsite"
 SITE_NAME="researchsite"
-DOMAIN_DEFAULT="calebgonsalves.com"
+DOMAIN_DEFAULT="researchbuddy.org"
 
 command_exists() { command -v "$1" >/dev/null 2>&1; }
 
 ensure_dirs() {
   sudo mkdir -p "$RUN_DIR" "$LOG_DIR" "$APP_DIR/data/uploads" "$APP_DIR/data/vector_store"
-  sudo chown -R "$USER":"$USER" "$APP_DIR" || true
+  # Use current user or fallback to root
+  local current_user="${USER:-$(whoami)}"
+  sudo chown -R "$current_user":"$current_user" "$APP_DIR" || true
 }
 
 nginx_reload() {
@@ -54,10 +56,10 @@ server {
 
     location / {
         proxy_pass http://127.0.0.1:8080;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_read_timeout 300;
     }
 }

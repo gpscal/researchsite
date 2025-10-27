@@ -18,6 +18,14 @@ load_dotenv()
 # Set up logging
 logger = logging.getLogger(__name__)
 
+# Set up HuggingFace token for model downloads
+hf_token = os.getenv("HF_TOKEN")
+if hf_token:
+    os.environ["HUGGINGFACE_HUB_TOKEN"] = hf_token
+    logger.info("HuggingFace token configured for model downloads")
+else:
+    logger.warning("HF_TOKEN not found in environment - some models may fail to download")
+
 try:
     from langchain_chroma import Chroma
 except ImportError:
@@ -66,7 +74,35 @@ except Exception:
     pass
 
 logger.info(f"Initializing embeddings with model: {_model_name}")
-_embedder = SentenceTransformerEmbeddings(model_name=_model_name)
+
+# Set up cache directory for Hugging Face models
+import tempfile
+import os
+
+# Use temp directory for cache to avoid disk space issues
+cache_dir = "/tmp/hf_cache"
+os.makedirs(cache_dir, exist_ok=True)
+
+# Set environment variables for Hugging Face
+os.environ["HF_HOME"] = cache_dir
+os.environ["TRANSFORMERS_CACHE"] = cache_dir
+
+try:
+    # Initialize embeddings with proper cache directory
+    _embedder = SentenceTransformerEmbeddings(
+        model_name=_model_name,
+        model_kwargs={"cache_folder": cache_dir}
+    )
+    logger.info("Embeddings initialized successfully")
+except Exception as e:
+    logger.error(f"Failed to initialize embeddings: {e}")
+    # Fallback: try without cache folder
+    try:
+        _embedder = SentenceTransformerEmbeddings(model_name=_model_name)
+        logger.info("Embeddings initialized without cache folder")
+    except Exception as final_error:
+        logger.error(f"All embedding initialization attempts failed: {final_error}")
+        raise
 
 # Use LangChain's Anthropic LLM with valid model name
 anthropic_model_name = os.getenv("ANTHROPIC_MODEL", "claude-3-haiku-20240307")
