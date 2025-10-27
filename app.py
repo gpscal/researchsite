@@ -112,27 +112,42 @@ def upload_pdf_page():
 def rag_query():
     payload = request.get_json(force=True)
     question = payload.get("question", "").strip()
-    # top_k = int(payload.get("top_k", 3)) # top_k is handled by the retrieval chain
+    provider = payload.get("provider", "anthropic")  # Default to anthropic, support 'wizardlm'
     stream = bool(payload.get("stream", True))
-    # These flags are part of the old RAG service logic which is being replaced for PDF queries
-    # use_training_data = bool(payload.get("use_training_data", False))
-    # use_web = bool(payload.get("use_web", False))
-    # model_type = payload.get("model_type")
+    use_training_data = bool(payload.get("use_training_data", True))  # Default to True
+    use_web = bool(payload.get("use_web", False))  # Default to False
+    top_k = int(payload.get("top_k", 8))  # Default to 8
 
     if not question:
         return jsonify({"error": "Question is required"}), 400
+    
+    # Validate provider
+    if provider not in ['anthropic', 'wizardlm']:
+        return jsonify({"error": f"Invalid provider: {provider}. Must be 'anthropic' or 'wizardlm'"}), 400
 
     if not stream:
-        result = langchain_service.query(question)
+        result = langchain_service.query(
+            question, 
+            provider=provider,
+            use_training_data=use_training_data,
+            use_web=use_web,
+            top_k=top_k
+        )
         _log_conversation(
             question,
             result.get("answer", ""),
-            {},
+            {"provider": provider, "use_training_data": use_training_data, "use_web": use_web},
         )
         return jsonify(result)
 
     def responder():
-        for chunk in langchain_service.query_stream(question):
+        for chunk in langchain_service.query_stream(
+            question, 
+            provider=provider,
+            use_training_data=use_training_data,
+            use_web=use_web,
+            top_k=top_k
+        ):
             yield f"data: {chunk}\n\n"
 
     return Response(responder(), mimetype="text/event-stream")
@@ -238,6 +253,45 @@ def query_pdf_document():
     # This relied on pdf_service, which is being removed. 
     # Returning a placeholder response.
     return jsonify({"success": False, "error": "This endpoint is deprecated."})
+
+@app.route("/api/rag/providers", methods=["GET"])
+def get_llm_providers():
+    """Get list of available LLM providers"""
+    providers = []
+    
+    # Check which providers are available
+    from langchain_service import _anthropic_llm, get_wizardlm
+    
+    if _anthropic_llm is not None:
+        providers.append({
+            "id": "anthropic",
+            "name": "Anthropic Claude",
+            "model": os.getenv("ANTHROPIC_MODEL", "claude-3-haiku-20240307"),
+            "available": True
+        })
+    
+    # Check if WizardLM can be loaded
+    try:
+        providers.append({
+            "id": "wizardlm",
+            "name": "WizardLM-13B-Uncensored",
+            "model": os.getenv("WIZARDLM_MODEL", "QuixiAI/WizardLM-13B-Uncensored"),
+            "available": True
+        })
+    except Exception as e:
+        providers.append({
+            "id": "wizardlm",
+            "name": "WizardLM-13B-Uncensored",
+            "model": os.getenv("WIZARDLM_MODEL", "QuixiAI/WizardLM-13B-Uncensored"),
+            "available": False,
+            "error": str(e)
+        })
+    
+    return jsonify({
+        "success": True,
+        "providers": providers,
+        "default": "anthropic"
+    })
 
 @app.route("/health", methods=["GET"])
 def health_check():

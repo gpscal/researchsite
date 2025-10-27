@@ -349,21 +349,61 @@ class LangChainService:
             if os.path.exists(temp_file_path):
                 os.remove(temp_file_path)
 
-    def query_stream(self, question: str, provider: str = 'anthropic') -> Iterator[str]:
+    def query_stream(self, question: str, provider: str = 'anthropic', use_training_data: bool = True, use_web: bool = False, top_k: int = 8) -> Iterator[str]:
         """Queries the retrieval chain and streams the response."""
         try:
+            # If not using training data, just answer directly without context
+            if not use_training_data:
+                if provider == 'wizardlm':
+                    llm = get_wizardlm()
+                    # Answer without context
+                    for chunk in llm.stream(question):
+                        yield json.dumps({"content": chunk})
+                else:
+                    # Use Anthropic without context
+                    if _anthropic_llm is None:
+                        yield json.dumps({"error": "Anthropic LLM not available"})
+                        yield json.dumps({"done": True})
+                        return
+                    
+                    # Simple prompt without RAG context
+                    for chunk in _anthropic_llm.stream(question):
+                        if hasattr(chunk, 'content'):
+                            yield json.dumps({"content": chunk.content})
+                        else:
+                            yield json.dumps({"content": str(chunk)})
+                
+                yield json.dumps({"sources": []})
+                yield json.dumps({"done": True})
+                return
+            
             # Check if the collection has any documents
             collection = self.vector_store._collection
             doc_count = collection.count()
             
             if doc_count == 0:
-                # No documents indexed yet
-                yield json.dumps({"content": "No documents have been indexed yet. Please upload PDF documents first to enable question-answering."})
+                # No documents indexed yet - answer without context
+                if provider == 'wizardlm':
+                    llm = get_wizardlm()
+                    for chunk in llm.stream(question):
+                        yield json.dumps({"content": chunk})
+                else:
+                    if _anthropic_llm is None:
+                        yield json.dumps({"error": "Anthropic LLM not available"})
+                        yield json.dumps({"done": True})
+                        return
+                    for chunk in _anthropic_llm.stream(question):
+                        if hasattr(chunk, 'content'):
+                            yield json.dumps({"content": chunk.content})
+                        else:
+                            yield json.dumps({"content": str(chunk)})
+                
+                yield json.dumps({"sources": []})
                 yield json.dumps({"done": True})
                 return
             
             # Get documents from retriever directly for sources
-            retriever = self.vector_store.as_retriever(search_kwargs={"k": 8})
+            retriever = self.vector_store.as_retriever(search_kwargs={"k": top_k})
             docs = retriever.invoke(question)
             
             # Prepare sources (will send at the END of streaming)
@@ -428,23 +468,58 @@ class LangChainService:
             yield json.dumps({"error": f"Query failed: {str(e)}"})
             yield json.dumps({"done": True})
 
-    def query(self, question: str, provider: str = 'anthropic') -> Dict[str, Any]:
+    def query(self, question: str, provider: str = 'anthropic', use_training_data: bool = True, use_web: bool = False, top_k: int = 8) -> Dict[str, Any]:
         """Queries the retrieval chain and returns the final response."""
         try:
+            # If not using training data, just answer directly without context
+            if not use_training_data:
+                if provider == 'wizardlm':
+                    llm = get_wizardlm()
+                    answer = llm.invoke(question)
+                else:
+                    # Use Anthropic without context
+                    if _anthropic_llm is None:
+                        return {
+                            "success": False,
+                            "error": "Anthropic LLM not available",
+                            "answer": "Sorry, the LLM is not available."
+                        }
+                    response = _anthropic_llm.invoke(question)
+                    answer = response.content if hasattr(response, 'content') else str(response)
+                
+                return {
+                    "success": True,
+                    "answer": answer,
+                    "sources": []
+                }
+            
             # Check if the collection has any documents
             collection = self.vector_store._collection
             doc_count = collection.count()
             
             if doc_count == 0:
-                # No documents indexed yet
+                # No documents indexed yet - answer without context
+                if provider == 'wizardlm':
+                    llm = get_wizardlm()
+                    answer = llm.invoke(question)
+                else:
+                    if _anthropic_llm is None:
+                        return {
+                            "success": False,
+                            "error": "Anthropic LLM not available",
+                            "answer": "Sorry, the LLM is not available."
+                        }
+                    response = _anthropic_llm.invoke(question)
+                    answer = response.content if hasattr(response, 'content') else str(response)
+                
                 return {
                     "success": True,
-                    "answer": "No documents have been indexed yet. Please upload PDF documents first to enable question-answering.",
+                    "answer": answer,
                     "sources": []
                 }
             
             # Get documents from retriever directly for sources
-            retriever = self.vector_store.as_retriever(search_kwargs={"k": 8})
+            retriever = self.vector_store.as_retriever(search_kwargs={"k": top_k})
             docs = retriever.invoke(question)
             
             sources = [
