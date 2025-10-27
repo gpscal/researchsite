@@ -809,3 +809,4 @@ def get_langchain_service() -> LangChainService:
     if _langchain_service_instance is None:
         _langchain_service_instance = LangChainService()
     return _langchain_service_instance
+
