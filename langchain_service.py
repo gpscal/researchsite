@@ -37,8 +37,9 @@ from langchain_community.embeddings import SentenceTransformerEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-from langchain_core.runnables import RunnablePassthrough
+from langchain_core.runnables import RunnablePassthrough, RunnableLambda
 from langchain_core.documents import Document
+from langchain_core.language_models.base import BaseLanguageModel
 from langchain_anthropic import ChatAnthropic
 import chromadb
 from chromadb.config import Settings
@@ -104,22 +105,88 @@ except Exception as e:
         logger.error(f"All embedding initialization attempts failed: {final_error}")
         raise
 
-# Use LangChain's Anthropic LLM with valid model name
+# LangChain-compatible wrapper for WizardLM
+class WizardLMWrapper:
+    """Wrapper to make WizardLM compatible with LangChain interface."""
+    
+    def __init__(self, model_name: str):
+        from research_llm import WizardLMLLM
+        self.model = WizardLMLLM(model_name=model_name)
+        logger.info(f"WizardLM wrapper initialized with model: {model_name}")
+    
+    def _extract_prompt(self, messages):
+        """Extract prompt text from various message formats."""
+        if isinstance(messages, str):
+            return messages
+        elif isinstance(messages, list):
+            # Handle list of messages
+            prompt_parts = []
+            for msg in messages:
+                if hasattr(msg, 'content'):
+                    prompt_parts.append(msg.content)
+                elif isinstance(msg, dict):
+                    prompt_parts.append(msg.get('content', ''))
+                else:
+                    prompt_parts.append(str(msg))
+            return '\n'.join(prompt_parts)
+        elif hasattr(messages, 'to_string'):
+            return messages.to_string()
+        elif hasattr(messages, 'content'):
+            return messages.content
+        else:
+            return str(messages)
+    
+    def invoke(self, messages):
+        """LangChain-compatible invoke method."""
+        prompt = self._extract_prompt(messages)
+        response = self.model.generate(prompt, max_tokens=1024)
+        # Return as a string (LangChain expects strings from LLMs)
+        return str(response) if response else ""
+    
+    def stream(self, messages):
+        """LangChain-compatible stream method."""
+        prompt = self._extract_prompt(messages)
+        for chunk in self.model.generate_stream(prompt, max_tokens=1024):
+            # Yield strings directly (LangChain expects string chunks)
+            yield str(chunk) if chunk else ""
+    
+    def __call__(self, messages):
+        """Make the wrapper callable."""
+        return self.invoke(messages)
+
+# Initialize LLM providers
+_anthropic_llm = None
+_wizardlm_llm = None
+
+# Initialize Anthropic
 anthropic_model_name = os.getenv("ANTHROPIC_MODEL", "claude-3-haiku-20240307")
 anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
 
-if not anthropic_api_key:
-    logger.error("ANTHROPIC_API_KEY not set in environment")
-    logger.error("Please create a .env file with ANTHROPIC_API_KEY=your-key-here")
-    _llm = None
-else:
+if anthropic_api_key:
     try:
         logger.info(f"Initializing Anthropic LLM with model: {anthropic_model_name}")
-        _llm = ChatAnthropic(model=anthropic_model_name, api_key=anthropic_api_key)
+        _anthropic_llm = ChatAnthropic(model=anthropic_model_name, api_key=anthropic_api_key)
+        logger.info("Anthropic LLM initialized successfully")
     except Exception as e:
         logger.error(f"Failed to initialize Anthropic LLM: {e}")
         logger.error("Make sure ANTHROPIC_API_KEY is valid in .env file")
-        _llm = None
+else:
+    logger.warning("ANTHROPIC_API_KEY not set - Anthropic LLM not available")
+
+# Initialize WizardLM (lazy load on first use to save memory)
+def get_wizardlm():
+    """Lazy load WizardLM model."""
+    global _wizardlm_llm
+    if _wizardlm_llm is None:
+        try:
+            wizardlm_model_name = os.getenv("WIZARDLM_MODEL", "QuixiAI/WizardLM-13B-Uncensored")
+            logger.info(f"Initializing WizardLM with model: {wizardlm_model_name}")
+            _wizardlm_llm = WizardLMWrapper(wizardlm_model_name)
+            logger.info("WizardLM initialized successfully")
+        except Exception as e:
+            logger.error(f"Failed to initialize WizardLM: {e}")
+            raise RuntimeError(f"WizardLM initialization failed: {e}")
+    return _wizardlm_llm
 
 
 class LangChainService:
@@ -140,19 +207,27 @@ class LangChainService:
             embedding_function=_embedder,
         )
         
-        # Check if LLM is available
-        if _llm is None:
-            logger.error("Cannot create LangChain service: Anthropic LLM not initialized")
-            logger.error("Please set ANTHROPIC_API_KEY in .env file")
-            raise RuntimeError(
-                "Anthropic LLM not initialized. "
-                "Please create a .env file with ANTHROPIC_API_KEY=your-api-key"
-            )
+        # Initialize the collection properly (this ensures it exists even when empty)
+        try:
+            # Get or create the collection
+            collection = self.vector_store._collection
+            doc_count = collection.count()
+            logger.info(f"Vector store initialized with {doc_count} documents")
+        except Exception as e:
+            logger.warning(f"Could not get collection count: {e}")
         
-        self.retrieval_chain = self._create_retrieval_chain()
+        # Check if at least one LLM is available
+        if _anthropic_llm is None:
+            logger.warning("Anthropic LLM not initialized. WizardLM will be used if requested.")
+        
+        # Store retrieval chains for different providers
+        self.retrieval_chains = {}
+        if _anthropic_llm:
+            self.retrieval_chains['anthropic'] = self._create_retrieval_chain(_anthropic_llm)
+        
         logger.info("LangChain service initialized successfully")
 
-    def _create_retrieval_chain(self):
+    def _create_retrieval_chain(self, llm):
         """Creates the LangChain retrieval chain for question-answering."""
         from operator import itemgetter
         
@@ -196,6 +271,14 @@ class LangChainService:
             
             return "\n\n---\n\n".join(formatted)
         
+        # Wrap WizardLM with RunnableLambda if it's not already a LangChain model
+        if isinstance(llm, WizardLMWrapper):
+            # Wrap the WizardLM wrapper with RunnableLambda to make it chain-compatible
+            llm_runnable = RunnableLambda(llm.invoke)
+        else:
+            # Use the LLM directly (e.g., ChatAnthropic already implements Runnable)
+            llm_runnable = llm
+        
         # Create RAG chain with proper error handling
         rag_chain = (
             {
@@ -203,11 +286,26 @@ class LangChainService:
                 "input": itemgetter("input")
             }
             | prompt
-            | _llm
+            | llm_runnable
             | StrOutputParser()
         )
         
         return rag_chain
+    
+    def _get_retrieval_chain(self, provider='anthropic'):
+        """Get or create retrieval chain for the specified provider."""
+        if provider not in self.retrieval_chains:
+            if provider == 'wizardlm':
+                llm = get_wizardlm()
+                self.retrieval_chains['wizardlm'] = self._create_retrieval_chain(llm)
+            elif provider == 'anthropic':
+                if _anthropic_llm is None:
+                    raise RuntimeError("Anthropic LLM not initialized")
+                self.retrieval_chains['anthropic'] = self._create_retrieval_chain(_anthropic_llm)
+            else:
+                raise ValueError(f"Unknown provider: {provider}")
+        
+        return self.retrieval_chains[provider]
 
     def _generate_document_id(self, file_bytes: bytes, filename: str) -> str:
         """Generates a unique ID for a document based on its content and name."""
@@ -251,9 +349,19 @@ class LangChainService:
             if os.path.exists(temp_file_path):
                 os.remove(temp_file_path)
 
-    def query_stream(self, question: str) -> Iterator[str]:
+    def query_stream(self, question: str, provider: str = 'anthropic') -> Iterator[str]:
         """Queries the retrieval chain and streams the response."""
         try:
+            # Check if the collection has any documents
+            collection = self.vector_store._collection
+            doc_count = collection.count()
+            
+            if doc_count == 0:
+                # No documents indexed yet
+                yield json.dumps({"content": "No documents have been indexed yet. Please upload PDF documents first to enable question-answering."})
+                yield json.dumps({"done": True})
+                return
+            
             # Get documents from retriever directly for sources
             retriever = self.vector_store.as_retriever(search_kwargs={"k": 8})
             docs = retriever.invoke(question)
@@ -268,9 +376,47 @@ class LangChainService:
                 for doc in docs
             ]
             
-            # Stream the answer FIRST
-            for chunk in self.retrieval_chain.stream({"input": question}):
-                yield json.dumps({"content": chunk})
+            # Format context from retrieved documents
+            def format_docs(docs):
+                if not docs:
+                    return "No documents have been indexed yet. Please upload PDF documents to enable retrieval."
+                formatted = []
+                for i, doc in enumerate(docs):
+                    source = doc.metadata.get('source', 'unknown')
+                    page = doc.metadata.get('page', 'unknown')
+                    formatted.append(f"[Document {i+1}] From: {source}, Page: {page}\n{doc.page_content}")
+                return "\n\n---\n\n".join(formatted)
+            
+            context = format_docs(docs)
+            
+            # Build the full prompt
+            system_prompt = (
+                "You are a helpful research assistant. The user has uploaded PDF documents that are indexed. "
+                "Below is the context retrieved from those indexed documents.\n"
+                "\n"
+                "CRITICAL RULES:\n"
+                "1. The context below IS from indexed PDFs - never say 'no documents are indexed' if you see text below\n"
+                "2. If you see document text in the context, acknowledge what PDFs ARE available\n"
+                "3. Answer based on what's in the context, citing source and page numbers\n"
+                "4. If the context doesn't answer the specific question, say what information IS available instead\n"
+                "5. Only say 'no documents indexed' if the context section below is completely empty\n"
+                "\n"
+                f"Retrieved Context:\n{context}"
+            )
+            
+            full_prompt = f"{system_prompt}\n\nHuman: {question}\n\nAssistant:"
+            
+            # Handle streaming differently for WizardLM vs Anthropic
+            if provider == 'wizardlm':
+                llm = get_wizardlm()
+                # Stream directly from WizardLM
+                for chunk in llm.stream(full_prompt):
+                    yield json.dumps({"content": chunk})
+            else:
+                # Use the retrieval chain for Anthropic
+                retrieval_chain = self._get_retrieval_chain(provider)
+                for chunk in retrieval_chain.stream({"input": question}):
+                    yield json.dumps({"content": chunk})
             
             # Send sources AFTER content is complete
             if sources:
@@ -282,15 +428,24 @@ class LangChainService:
             yield json.dumps({"error": f"Query failed: {str(e)}"})
             yield json.dumps({"done": True})
 
-    def query(self, question: str) -> Dict[str, Any]:
+    def query(self, question: str, provider: str = 'anthropic') -> Dict[str, Any]:
         """Queries the retrieval chain and returns the final response."""
         try:
+            # Check if the collection has any documents
+            collection = self.vector_store._collection
+            doc_count = collection.count()
+            
+            if doc_count == 0:
+                # No documents indexed yet
+                return {
+                    "success": True,
+                    "answer": "No documents have been indexed yet. Please upload PDF documents first to enable question-answering.",
+                    "sources": []
+                }
+            
             # Get documents from retriever directly for sources
             retriever = self.vector_store.as_retriever(search_kwargs={"k": 8})
             docs = retriever.invoke(question)
-            
-            # Get the answer
-            answer = self.retrieval_chain.invoke({"input": question})
             
             sources = [
                 {
@@ -300,6 +455,46 @@ class LangChainService:
                 }
                 for doc in docs
             ]
+            
+            # Handle WizardLM differently from Anthropic
+            if provider == 'wizardlm':
+                # Format context from retrieved documents
+                def format_docs(docs):
+                    if not docs:
+                        return "No documents have been indexed yet."
+                    formatted = []
+                    for i, doc in enumerate(docs):
+                        source = doc.metadata.get('source', 'unknown')
+                        page = doc.metadata.get('page', 'unknown')
+                        formatted.append(f"[Document {i+1}] From: {source}, Page: {page}\n{doc.page_content}")
+                    return "\n\n---\n\n".join(formatted)
+                
+                context = format_docs(docs)
+                
+                # Build the full prompt
+                system_prompt = (
+                    "You are a helpful research assistant. The user has uploaded PDF documents that are indexed. "
+                    "Below is the context retrieved from those indexed documents.\n"
+                    "\n"
+                    "CRITICAL RULES:\n"
+                    "1. The context below IS from indexed PDFs - never say 'no documents are indexed' if you see text below\n"
+                    "2. If you see document text in the context, acknowledge what PDFs ARE available\n"
+                    "3. Answer based on what's in the context, citing source and page numbers\n"
+                    "4. If the context doesn't answer the specific question, say what information IS available instead\n"
+                    "5. Only say 'no documents indexed' if the context section below is completely empty\n"
+                    "\n"
+                    f"Retrieved Context:\n{context}"
+                )
+                
+                full_prompt = f"{system_prompt}\n\nHuman: {question}\n\nAssistant:"
+                
+                llm = get_wizardlm()
+                answer = llm.invoke(full_prompt)
+            else:
+                # Use the retrieval chain for Anthropic
+                retrieval_chain = self._get_retrieval_chain(provider)
+                answer = retrieval_chain.invoke({"input": question})
+            
             return {
                 "success": True,
                 "answer": answer,
@@ -311,6 +506,36 @@ class LangChainService:
                 "success": False,
                 "error": str(e),
                 "answer": "Sorry, I encountered an error processing your query. Please try again."
+            }
+    
+    def get_collection_stats(self) -> Dict[str, Any]:
+        """Returns statistics about the vector store collection."""
+        try:
+            collection = self.vector_store._collection
+            doc_count = collection.count()
+            
+            # Get unique document sources
+            if doc_count > 0:
+                results = collection.get(include=["metadatas"])
+                metadatas = results.get("metadatas", [])
+                sources = set(m.get("source", "unknown") for m in metadatas if m)
+            else:
+                sources = set()
+            
+            return {
+                "success": True,
+                "document_count": doc_count,
+                "unique_sources": len(sources),
+                "sources": list(sources)
+            }
+        except Exception as e:
+            logger.error(f"Error getting collection stats: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": str(e),
+                "document_count": 0,
+                "unique_sources": 0,
+                "sources": []
             }
 
 _langchain_service_instance = None
