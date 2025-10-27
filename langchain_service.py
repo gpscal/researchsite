@@ -7,6 +7,7 @@ import os
 import tempfile
 import hashlib
 import json
+from datetime import datetime
 from typing import Dict, Any, Iterator, List
 from pathlib import Path
 from dotenv import load_dotenv
@@ -89,21 +90,12 @@ os.environ["HF_HOME"] = cache_dir
 os.environ["TRANSFORMERS_CACHE"] = cache_dir
 
 try:
-    # Initialize embeddings with proper cache directory
-    _embedder = SentenceTransformerEmbeddings(
-        model_name=_model_name,
-        model_kwargs={"cache_folder": cache_dir}
-    )
+    # Initialize embeddings - cache directory is set via environment variables
+    _embedder = SentenceTransformerEmbeddings(model_name=_model_name)
     logger.info("Embeddings initialized successfully")
 except Exception as e:
     logger.error(f"Failed to initialize embeddings: {e}")
-    # Fallback: try without cache folder
-    try:
-        _embedder = SentenceTransformerEmbeddings(model_name=_model_name)
-        logger.info("Embeddings initialized without cache folder")
-    except Exception as final_error:
-        logger.error(f"All embedding initialization attempts failed: {final_error}")
-        raise
+    raise
 
 # LangChain-compatible wrapper for WizardLM
 class WizardLMWrapper:
@@ -194,6 +186,10 @@ class LangChainService:
         """Initializes the LangChain service, setting up the vector store and retrieval chain."""
         # Ensure the persist directory exists
         Path(_persist_dir).mkdir(parents=True, exist_ok=True)
+        
+        # Initialize document tracking system
+        self.doc_tracking_path = Path(_persist_dir) / "document_tracking.json"
+        self._load_document_tracking()
         
         # Use persistent Chroma client for data persistence
         chroma_client = chromadb.PersistentClient(
@@ -307,15 +303,110 @@ class LangChainService:
         
         return self.retrieval_chains[provider]
 
+    def _load_document_tracking(self) -> None:
+        """Load document tracking data from disk."""
+        if self.doc_tracking_path.exists():
+            try:
+                with open(self.doc_tracking_path, 'r') as f:
+                    self.document_tracking = json.load(f)
+                logger.info(f"Loaded tracking data for {len(self.document_tracking)} documents")
+            except Exception as e:
+                logger.warning(f"Could not load document tracking: {e}")
+                self.document_tracking = {}
+        else:
+            self.document_tracking = {}
+    
+    def _save_document_tracking(self) -> None:
+        """Save document tracking data to disk."""
+        try:
+            with open(self.doc_tracking_path, 'w') as f:
+                json.dump(self.document_tracking, f, indent=2)
+            logger.info("Document tracking data saved")
+        except Exception as e:
+            logger.error(f"Failed to save document tracking: {e}")
+    
     def _generate_document_id(self, file_bytes: bytes, filename: str) -> str:
         """Generates a unique ID for a document based on its content and name."""
         content_hash = hashlib.md5(file_bytes).hexdigest()
         name_hash = hashlib.md5(filename.encode()).hexdigest()
         return f"{name_hash[:8]}_{content_hash[:16]}"
+    
+    def _generate_chunk_hash(self, text: str) -> str:
+        """Generate a hash for a text chunk for deduplication."""
+        return hashlib.md5(text.encode('utf-8')).hexdigest()
+    
+    def _get_existing_pages(self, document_id: str) -> set:
+        """Get set of already processed page numbers for a document."""
+        if document_id in self.document_tracking:
+            return set(self.document_tracking[document_id].get("processed_pages", []))
+        return set()
+    
+    def _get_existing_chunk_hashes(self, document_id: str) -> set:
+        """Get set of existing chunk hashes for a document to prevent duplicates."""
+        try:
+            collection = self.vector_store._collection
+            results = collection.get(
+                where={"document_id": document_id},
+                include=["metadatas"]
+            )
+            
+            chunk_hashes = set()
+            if results and results.get("metadatas"):
+                for metadata in results["metadatas"]:
+                    if "chunk_hash" in metadata:
+                        chunk_hashes.add(metadata["chunk_hash"])
+            
+            logger.info(f"Found {len(chunk_hashes)} existing chunks for document {document_id}")
+            return chunk_hashes
+        except Exception as e:
+            logger.warning(f"Could not retrieve existing chunks: {e}")
+            return set()
+    
+    def get_document_info(self, document_id: str) -> Dict[str, Any]:
+        """Get information about a processed document."""
+        if document_id not in self.document_tracking:
+            return {
+                "success": False,
+                "error": "Document not found",
+                "document_id": document_id
+            }
+        
+        doc_info = self.document_tracking[document_id]
+        return {
+            "success": True,
+            "document_id": document_id,
+            "filename": doc_info.get("filename", "unknown"),
+            "total_pages": doc_info.get("total_pages", 0),
+            "processed_pages": sorted(doc_info.get("processed_pages", [])),
+            "total_chunks": doc_info.get("total_chunks", 0),
+            "last_updated": doc_info.get("last_updated", "unknown"),
+            "upload_count": doc_info.get("upload_count", 1)
+        }
 
-    def index_pdf(self, file_bytes: bytes, filename: str) -> Dict[str, Any]:
-        """Loads a PDF from bytes, splits it into chunks, and indexes it in the vector store."""
+    def index_pdf(self, file_bytes: bytes, filename: str, force_reindex: bool = False) -> Dict[str, Any]:
+        """
+        Loads a PDF from bytes, splits it into chunks, and indexes it in the vector store.
+        Implements incremental processing - only processes new pages that haven't been indexed yet.
+        
+        Args:
+            file_bytes: PDF file content as bytes
+            filename: Original filename
+            force_reindex: If True, reprocess all pages even if already indexed
+            
+        Returns:
+            Dict with processing results including which pages were processed
+        """
         document_id = self._generate_document_id(file_bytes, filename)
+        
+        # Get existing processing info
+        existing_pages = self._get_existing_pages(document_id) if not force_reindex else set()
+        existing_chunk_hashes = self._get_existing_chunk_hashes(document_id) if not force_reindex else set()
+        
+        is_new_document = document_id not in self.document_tracking
+        
+        logger.info(f"Processing PDF: {filename} (document_id: {document_id})")
+        if not is_new_document and not force_reindex:
+            logger.info(f"Document already exists. Processed pages: {sorted(existing_pages)}")
         
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
             temp_file.write(file_bytes)
@@ -324,26 +415,123 @@ class LangChainService:
         try:
             loader = PyPDFLoader(temp_file_path)
             pages = loader.load()
-
-            text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-            splits = text_splitter.split_documents(pages)
+            total_pages = len(pages)
             
-            # Add document_id and original filename to each chunk's metadata
+            logger.info(f"PDF has {total_pages} pages total")
+            
+            # Filter to only new pages
+            new_pages = []
+            new_page_numbers = []
+            skipped_pages = []
+            
+            for page_doc in pages:
+                # Get page number (0-indexed in metadata, but we'll store 1-indexed)
+                page_num = page_doc.metadata.get("page", 0) + 1
+                
+                if force_reindex or page_num not in existing_pages:
+                    new_pages.append(page_doc)
+                    new_page_numbers.append(page_num)
+                else:
+                    skipped_pages.append(page_num)
+            
+            if not new_pages:
+                logger.info(f"All {total_pages} pages already processed. No new content to index.")
+                return {
+                    "success": True,
+                    "filename": filename,
+                    "document_id": document_id,
+                    "page_count": total_pages,
+                    "new_pages": 0,
+                    "skipped_pages": len(skipped_pages),
+                    "chunks": 0,
+                    "new_chunks": 0,
+                    "duplicate_chunks": 0,
+                    "message": "Document already fully indexed. No new pages to process."
+                }
+            
+            logger.info(f"Processing {len(new_pages)} new pages: {sorted(new_page_numbers)}")
+            if skipped_pages:
+                logger.info(f"Skipping {len(skipped_pages)} already-processed pages: {sorted(skipped_pages)}")
+            
+            # Split new pages into chunks
+            text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+            splits = text_splitter.split_documents(new_pages)
+            
+            # Deduplicate chunks and add metadata
+            new_chunks = []
+            duplicate_count = 0
+            
             for split in splits:
+                # Generate hash for deduplication
+                chunk_hash = self._generate_chunk_hash(split.page_content)
+                
+                # Skip if this exact chunk already exists
+                if chunk_hash in existing_chunk_hashes:
+                    duplicate_count += 1
+                    logger.debug(f"Skipping duplicate chunk with hash {chunk_hash}")
+                    continue
+                
+                # Add metadata
                 split.metadata["document_id"] = document_id
                 split.metadata["source"] = filename
-
-            self.vector_store.add_documents(documents=splits)
+                split.metadata["chunk_hash"] = chunk_hash
+                
+                new_chunks.append(split)
+                existing_chunk_hashes.add(chunk_hash)  # Track to prevent duplicates within this batch
             
-            return {
+            # Add new chunks to vector store
+            if new_chunks:
+                self.vector_store.add_documents(documents=new_chunks)
+                logger.info(f"Added {len(new_chunks)} new chunks to vector store")
+            
+            # Update tracking data
+            if document_id not in self.document_tracking:
+                self.document_tracking[document_id] = {
+                    "filename": filename,
+                    "total_pages": total_pages,
+                    "processed_pages": [],
+                    "total_chunks": 0,
+                    "upload_count": 0,
+                    "created_at": datetime.now().isoformat()
+                }
+            
+            # Update processed pages and chunk count
+            doc_info = self.document_tracking[document_id]
+            all_processed_pages = set(doc_info.get("processed_pages", [])) | set(new_page_numbers)
+            doc_info["processed_pages"] = sorted(list(all_processed_pages))
+            doc_info["total_pages"] = total_pages
+            doc_info["total_chunks"] = doc_info.get("total_chunks", 0) + len(new_chunks)
+            doc_info["upload_count"] = doc_info.get("upload_count", 0) + 1
+            doc_info["last_updated"] = datetime.now().isoformat()
+            
+            # Save tracking data
+            self._save_document_tracking()
+            
+            result = {
                 "success": True,
                 "filename": filename,
                 "document_id": document_id,
-                "page_count": len(pages),
-                "chunks": len(splits)
+                "page_count": total_pages,
+                "new_pages": len(new_pages),
+                "skipped_pages": len(skipped_pages),
+                "chunks": len(splits),
+                "new_chunks": len(new_chunks),
+                "duplicate_chunks": duplicate_count,
+                "processed_page_numbers": sorted(new_page_numbers),
+                "all_processed_pages": sorted(list(all_processed_pages)),
+                "is_complete": len(all_processed_pages) == total_pages
             }
+            
+            if not is_new_document:
+                result["message"] = f"Incremental update: processed {len(new_pages)} new pages, skipped {len(skipped_pages)} existing pages"
+            
+            logger.info(f"Processing complete: {len(new_chunks)} new chunks added, {duplicate_count} duplicates skipped")
+            
+            return result
+            
         except Exception as e:
             import traceback
+            logger.error(f"Error processing PDF: {e}")
             return {"success": False, "error": str(e), "traceback": traceback.format_exc()}
         finally:
             if os.path.exists(temp_file_path):

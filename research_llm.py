@@ -239,13 +239,22 @@ class WizardLMLLM:
     def _load_model(self):
         """Load the WizardLM model and tokenizer."""
         try:
-            # Configure quantization for memory efficiency
-            quantization_config = BitsAndBytesConfig(
-                load_in_4bit=True,
-                bnb_4bit_quant_type="nf4",
-                bnb_4bit_compute_dtype=torch.float16,
-                bnb_4bit_use_double_quant=True,
-            )
+            # Check if we should use quantization (4-bit) or full precision (fp16)
+            # For A100 80GB, we can use full fp16 for better quality
+            use_quantization = os.getenv("WIZARDLM_QUANTIZE", "false").lower() == "true"
+            
+            if use_quantization:
+                # Configure 4-bit quantization for memory efficiency (smaller GPUs)
+                print("INFO: Using 4-bit quantization (lower quality, saves memory)")
+                quantization_config = BitsAndBytesConfig(
+                    load_in_4bit=True,
+                    bnb_4bit_quant_type="nf4",
+                    bnb_4bit_compute_dtype=torch.float16,
+                    bnb_4bit_use_double_quant=True,
+                )
+            else:
+                print("INFO: Using full fp16 precision (better quality, ~27GB)")
+                quantization_config = None
 
             # Load tokenizer
             print("INFO: Loading tokenizer...")
@@ -259,18 +268,28 @@ class WizardLMLLM:
             if self.tokenizer.pad_token is None:
                 self.tokenizer.pad_token = self.tokenizer.eos_token
 
-            # Load model with quantization
+            # Load model
             print("INFO: Loading model (this may take a while)...")
+            model_kwargs = {
+                "device_map": self.device,
+                "token": hf_token,
+                "trust_remote_code": True,
+                "torch_dtype": torch.float16
+            }
+            
+            if quantization_config:
+                model_kwargs["quantization_config"] = quantization_config
+            
             self.model = AutoModelForCausalLM.from_pretrained(
                 self.model_name,
-                quantization_config=quantization_config,
-                device_map=self.device,
-                token=hf_token,
-                trust_remote_code=True,
-                torch_dtype=torch.float16
+                **model_kwargs
             )
             
+            # Print device info
             print(f"INFO: WizardLM model loaded successfully on device: {self.model.device}")
+            if torch.cuda.is_available():
+                memory_allocated = torch.cuda.memory_allocated(0) / 1024**3
+                print(f"INFO: GPU memory used: {memory_allocated:.2f} GB")
             
         except Exception as e:
             print(f"ERROR: Failed to load WizardLM model: {e}")

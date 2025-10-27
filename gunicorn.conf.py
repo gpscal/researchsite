@@ -33,14 +33,24 @@ pidfile = "/var/run/researchsite/researchsite.pid"
 # Environment variables
 raw_env = [
     "PORT=80",
-    "PYTHONPATH=/researchsite",
+    "PYTHONPATH=/ResearchBuddy",
 ]
 
-# Preload app for better performance
-preload_app = True
+# IMPORTANT: Disable preload to avoid CUDA forking issues
+# CUDA cannot be re-initialized in forked subprocesses
+preload_app = False
 
 # Graceful timeout
 graceful_timeout = 60
 
 # Memory management
 max_worker_memory = 1000  # MB - increased for ML models
+
+# Worker lifecycle hooks for CUDA compatibility
+def post_fork(server, worker):
+    """Called after a worker has been forked."""
+    # Ensure each worker has its own CUDA context
+    import torch
+    if torch.cuda.is_available():
+        torch.cuda.init()
+        worker.log.info(f"Worker {worker.pid}: CUDA initialized")

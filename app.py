@@ -166,8 +166,11 @@ def upload_pdf():
     if not file_bytes:
         return jsonify({"success": False, "error": "Empty file"}), 400
 
-    # Process and index the PDF using the new LangChain service
-    result = langchain_service.index_pdf(file_bytes, file.filename)
+    # Check if force_reindex is requested
+    force_reindex = request.form.get("force_reindex", "false").lower() == "true"
+
+    # Process and index the PDF using the new LangChain service with incremental processing
+    result = langchain_service.index_pdf(file_bytes, file.filename, force_reindex=force_reindex)
     
     if not result["success"]:
         return jsonify({
@@ -175,17 +178,61 @@ def upload_pdf():
             "error": f"PDF processing failed: {result.get('error')}"
         }), 500
     
-    # The new service returns a dict that is already suitable for the response.
-    # We just need to ensure all expected keys are present.
+    # Return comprehensive information about the processing
     response_data = {
         "success": True, 
         "document_id": result["document_id"],
         "filename": file.filename,
         "page_count": result["page_count"],
-        "chunks": result["chunks"],
-        "metadata": {} # metadata is not extracted by the new service in the same way. Returning empty.
+        "new_pages": result.get("new_pages", 0),
+        "skipped_pages": result.get("skipped_pages", 0),
+        "chunks": result.get("chunks", 0),
+        "new_chunks": result.get("new_chunks", 0),
+        "duplicate_chunks": result.get("duplicate_chunks", 0),
+        "processed_page_numbers": result.get("processed_page_numbers", []),
+        "all_processed_pages": result.get("all_processed_pages", []),
+        "is_complete": result.get("is_complete", True),
+        "message": result.get("message", "PDF processed successfully")
     }
     return jsonify(response_data)
+
+
+@app.route("/api/rag/document/<document_id>", methods=["GET"])
+def get_document_status(document_id):
+    """Get processing status for a specific document"""
+    result = langchain_service.get_document_info(document_id)
+    return jsonify(result)
+
+
+@app.route("/api/rag/documents", methods=["GET"])
+def list_documents():
+    """List all processed documents with their status"""
+    try:
+        # Access the document tracking data
+        documents = []
+        for doc_id, doc_info in langchain_service.document_tracking.items():
+            documents.append({
+                "document_id": doc_id,
+                "filename": doc_info.get("filename", "unknown"),
+                "total_pages": doc_info.get("total_pages", 0),
+                "processed_pages_count": len(doc_info.get("processed_pages", [])),
+                "total_chunks": doc_info.get("total_chunks", 0),
+                "upload_count": doc_info.get("upload_count", 1),
+                "last_updated": doc_info.get("last_updated", "unknown"),
+                "created_at": doc_info.get("created_at", "unknown"),
+                "is_complete": len(doc_info.get("processed_pages", [])) == doc_info.get("total_pages", 0)
+            })
+        
+        return jsonify({
+            "success": True,
+            "count": len(documents),
+            "documents": documents
+        })
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
 
 
 @app.route("/api/rag/upload-image", methods=["POST"])

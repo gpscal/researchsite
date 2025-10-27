@@ -51,6 +51,10 @@ function initializeEventListeners() {
     const modelSelector = document.getElementById('modelSelector');
     if (modelSelector) {
         modelSelector.value = 'anthropic';
+        modelSelector.addEventListener('change', function(e) {
+            selectedModel = e.target.value;
+            showNotification(`Switched to ${getModelLabel(selectedModel)}`, 'success');
+        });
     }
     
     // New Chat button
@@ -107,7 +111,11 @@ function initializeEventListeners() {
 }
 
 function getModelLabel(modelId) {
-    return 'Anthropic Claude';
+    const models = {
+        'anthropic': 'Anthropic Claude',
+        'wizardlm': 'WizardLM-13B-Uncensored'
+    };
+    return models[modelId] || modelId;
 }
 
 // Smart scroll setup
@@ -203,8 +211,39 @@ async function uploadPdf(file) {
 
         const result = await response.json();
         if (result.success) {
-            showNotification('✅ PDF ingested successfully.', 'success');
-            addMessage('system', `📄 **PDF Uploaded:** ${result.source}\nChunks indexed: ${result.chunks}`, false);
+            // Build detailed message about processing
+            let statusMessage = `📄 **PDF Processed:** ${result.filename}\n`;
+            statusMessage += `📊 **Document ID:** ${result.document_id}\n`;
+            statusMessage += `📑 **Total Pages:** ${result.page_count}\n`;
+            
+            if (result.new_pages === 0) {
+                // Document was already fully indexed
+                statusMessage += `✅ **Status:** Already fully indexed (${result.skipped_pages} pages)\n`;
+                statusMessage += `📦 **Total Chunks:** ${result.chunks}`;
+                showNotification('ℹ️ PDF already fully indexed - no new content added.', 'info');
+            } else {
+                // New content was processed
+                statusMessage += `🆕 **New Pages Processed:** ${result.new_pages}\n`;
+                if (result.skipped_pages > 0) {
+                    statusMessage += `⏭️ **Skipped (already indexed):** ${result.skipped_pages} pages\n`;
+                }
+                statusMessage += `📦 **New Chunks Added:** ${result.new_chunks}\n`;
+                if (result.duplicate_chunks > 0) {
+                    statusMessage += `🔄 **Duplicates Skipped:** ${result.duplicate_chunks}\n`;
+                }
+                statusMessage += `✅ **Complete:** ${result.is_complete ? 'Yes' : 'No'}\n`;
+                
+                if (result.processed_page_numbers && result.processed_page_numbers.length > 0) {
+                    const pageList = result.processed_page_numbers.length <= 10 
+                        ? result.processed_page_numbers.join(', ')
+                        : `${result.processed_page_numbers.slice(0, 10).join(', ')}... and ${result.processed_page_numbers.length - 10} more`;
+                    statusMessage += `📄 **Processed Pages:** ${pageList}`;
+                }
+                
+                showNotification('✅ PDF processed with incremental indexing!', 'success');
+            }
+            
+            addMessage('system', statusMessage, false);
             loadStats();
         } else {
             showNotification(`❌ PDF upload failed: ${result.error || 'Unknown error'}`, 'error');
@@ -350,7 +389,7 @@ async function sendQuery() {
                 top_k: topK,
                 use_web: useWeb,
                 stream: true,
-                model_type: selectedModel,
+                provider: selectedModel,  // Send provider (anthropic or wizardlm)
                 use_training_data: useTrainingData,
             }),
             signal: currentAbortController.signal  // Add abort signal
