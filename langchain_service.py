@@ -131,14 +131,16 @@ class QwenVLWrapper:
     def invoke(self, messages):
         """LangChain-compatible invoke method."""
         prompt = self._extract_prompt(messages)
-        response = self.model.generate(prompt, max_tokens=2048)
+        # Use smaller max_tokens for faster responses to simple queries
+        response = self.model.generate(prompt, max_tokens=256)
         # Return as a string (LangChain expects strings from LLMs)
         return str(response) if response else ""
     
     def stream(self, messages):
         """LangChain-compatible stream method."""
         prompt = self._extract_prompt(messages)
-        for chunk in self.model.generate_stream(prompt, max_tokens=2048):
+        # Use smaller max_tokens for faster responses
+        for chunk in self.model.generate_stream(prompt, max_tokens=256):
             # Yield strings directly (LangChain expects string chunks)
             yield str(chunk) if chunk else ""
     

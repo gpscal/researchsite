@@ -250,29 +250,54 @@ class QwenVLLL:
             
             # Load model with optimized settings for A100
             print("INFO: Using bf16 precision for better quality on A100")
+            
+            if not torch.cuda.is_available():
+                print("ERROR: CUDA is not available! Model will be very slow on CPU.")
+                raise RuntimeError("CUDA not available - GPU is required for this model")
+            
+            print(f"INFO: Loading model on GPU with device_map='auto'")
+            print(f"INFO: CUDA device count: {torch.cuda.device_count()}")
+            print(f"INFO: Current CUDA device: {torch.cuda.current_device()}")
+            
+            # Try to use flash attention if available, otherwise fall back to eager
+            try:
+                import flash_attn
+                attn_impl = "flash_attention_2"
+                print("INFO: Using flash_attention_2 for faster inference")
+            except ImportError:
+                attn_impl = "eager"
+                print("INFO: flash_attn not installed, using eager attention")
+            
             self.model = AutoModelForVision2Seq.from_pretrained(
                 self.model_name,
                 token=hf_token,
                 trust_remote_code=True,
-                torch_dtype=torch.bfloat16 if torch.cuda.is_available() else torch.float16,
-                device_map=self.device
+                torch_dtype=torch.bfloat16,
+                device_map="auto",
+                low_cpu_mem_usage=True,
+                max_memory={0: "75GB"},  # Use up to 75GB on GPU 0
+                attn_implementation=attn_impl
             )
             
+            # Verify model is on GPU
+            first_param_device = next(self.model.parameters()).device
+            print(f"INFO: Model first parameter device: {first_param_device}")
+            
             # Print device info
-            if torch.cuda.is_available():
-                memory_allocated = torch.cuda.memory_allocated(0) / 1024**3
-                print(f"INFO: QwenVL model loaded successfully on device: {self.model.device}")
-                print(f"INFO: GPU memory used: {memory_allocated:.2f} GB")
+            memory_allocated = torch.cuda.memory_allocated(0) / 1024**3
+            memory_reserved = torch.cuda.memory_reserved(0) / 1024**3
+            print(f"INFO: QwenVL model loaded successfully")
+            print(f"INFO: GPU memory allocated: {memory_allocated:.2f} GB")
+            print(f"INFO: GPU memory reserved: {memory_reserved:.2f} GB")
             
         except Exception as e:
             print(f"ERROR: Failed to load QwenVL model: {e}")
             raise
 
-    def generate(self, prompt: str, system: Optional[str] = None, max_tokens: int = 2048, messages: Optional[List] = None) -> str:
-        """Generate response from QwenVL."""
+    def generate(self, prompt: str, system: Optional[str] = None, max_tokens: int = 256, messages: Optional[List] = None) -> str:
+        """Generate response from QwenVL with optimized settings for speed."""
         try:
             # For Qwen2.5-VL, prepare messages in the format expected by the processor
-            # If system is provided, prepend it to the user message
             user_message = prompt
             if system:
                 user_message = f"System: {system}\n\nUser: {prompt}"
@@ -292,11 +317,26 @@ class QwenVLLL:
                 padding=True,
                 return_tensors="pt",
             )
-            inputs = inputs.to(self.device)
             
-            # Generate response
+            # Move inputs to GPU
+            first_device = next(self.model.parameters()).device
+            inputs = inputs.to(first_device)
+            
+            # Generate response with optimized parameters for speed
             with torch.no_grad():
-                generated_ids = self.model.generate(**inputs, max_new_tokens=max_tokens)
+                torch.cuda.synchronize()  # Ensure GPU is ready
+                generated_ids = self.model.generate(
+                    **inputs,
+                    max_new_tokens=max_tokens,
+                    min_new_tokens=1,
+                    do_sample=False,  # Greedy decoding for speed
+                    num_beams=1,  # No beam search for speed
+                    pad_token_id=self.processor.tokenizer.pad_token_id,
+                    eos_token_id=self.processor.tokenizer.eos_token_id,
+                    use_cache=True,  # Enable KV cache
+                    repetition_penalty=1.05,  # Slight penalty to avoid loops
+                )
+                torch.cuda.synchronize()  # Wait for generation to finish
             
             # Decode response
             generated_ids_trimmed = [
@@ -314,11 +354,11 @@ class QwenVLLL:
             traceback.print_exc()
             return f"Error generating response: {str(e)}"
 
-    def generate_stream(self, prompt: str, system: Optional[str] = None, max_tokens: int = 2048, messages: Optional[List] = None):
+    def generate_stream(self, prompt: str, system: Optional[str] = None, max_tokens: int = 256, messages: Optional[List] = None):
         """Generate streaming response from QwenVL."""
         try:
             # For now, generate the full response and yield it word by word
-            # Future: implement proper streaming generation
+            # Future: implement proper streaming generation with TextIteratorStreamer
             response = self.generate(prompt, system, max_tokens, messages)
             
             # Split into words and yield them
