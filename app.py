@@ -112,7 +112,7 @@ def upload_pdf_page():
 def rag_query():
     payload = request.get_json(force=True)
     question = payload.get("question", "").strip()
-    provider = payload.get("provider", "anthropic")  # Default to anthropic, support 'wizardlm'
+    provider = payload.get("provider", "anthropic")  # Default to anthropic, support 'qwenvl'
     stream = bool(payload.get("stream", True))
     use_training_data = bool(payload.get("use_training_data", True))  # Default to True
     use_web = bool(payload.get("use_web", False))  # Default to False
@@ -122,8 +122,8 @@ def rag_query():
         return jsonify({"error": "Question is required"}), 400
     
     # Validate provider
-    if provider not in ['anthropic', 'wizardlm']:
-        return jsonify({"error": f"Invalid provider: {provider}. Must be 'anthropic' or 'wizardlm'"}), 400
+    if provider not in ['anthropic', 'qwenvl']:
+        return jsonify({"error": f"Invalid provider: {provider}. Must be 'anthropic' or 'qwenvl'"}), 400
 
     if not stream:
         result = langchain_service.query(
@@ -307,7 +307,7 @@ def get_llm_providers():
     providers = []
     
     # Check which providers are available
-    from langchain_service import _anthropic_llm, get_wizardlm
+    from langchain_service import _anthropic_llm, get_qwenvl
     
     if _anthropic_llm is not None:
         providers.append({
@@ -317,19 +317,19 @@ def get_llm_providers():
             "available": True
         })
     
-    # Check if WizardLM can be loaded
+    # Check if QwenVL can be loaded
     try:
         providers.append({
-            "id": "wizardlm",
-            "name": "WizardLM-13B-Uncensored",
-            "model": os.getenv("WIZARDLM_MODEL", "QuixiAI/WizardLM-13B-Uncensored"),
+            "id": "qwenvl",
+            "name": "Qwen2.5-VL-32B-Instruct",
+            "model": os.getenv("QWENVL_MODEL", "Qwen/Qwen2.5-VL-32B-Instruct"),
             "available": True
         })
     except Exception as e:
         providers.append({
-            "id": "wizardlm",
-            "name": "WizardLM-13B-Uncensored",
-            "model": os.getenv("WIZARDLM_MODEL", "QuixiAI/WizardLM-13B-Uncensored"),
+            "id": "qwenvl",
+            "name": "Qwen2.5-VL-32B-Instruct",
+            "model": os.getenv("QWENVL_MODEL", "Qwen/Qwen2.5-VL-32B-Instruct"),
             "available": False,
             "error": str(e)
         })

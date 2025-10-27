@@ -97,14 +97,14 @@ except Exception as e:
     logger.error(f"Failed to initialize embeddings: {e}")
     raise
 
-# LangChain-compatible wrapper for WizardLM
-class WizardLMWrapper:
-    """Wrapper to make WizardLM compatible with LangChain interface."""
+# LangChain-compatible wrapper for QwenVL
+class QwenVLWrapper:
+    """Wrapper to make QwenVL compatible with LangChain interface."""
     
     def __init__(self, model_name: str):
-        from research_llm import WizardLMLLM
-        self.model = WizardLMLLM(model_name=model_name)
-        logger.info(f"WizardLM wrapper initialized with model: {model_name}")
+        from research_llm import QwenVLLL
+        self.model = QwenVLLL(model_name=model_name)
+        logger.info(f"QwenVL wrapper initialized with model: {model_name}")
     
     def _extract_prompt(self, messages):
         """Extract prompt text from various message formats."""
@@ -131,14 +131,14 @@ class WizardLMWrapper:
     def invoke(self, messages):
         """LangChain-compatible invoke method."""
         prompt = self._extract_prompt(messages)
-        response = self.model.generate(prompt, max_tokens=1024)
+        response = self.model.generate(prompt, max_tokens=2048)
         # Return as a string (LangChain expects strings from LLMs)
         return str(response) if response else ""
     
     def stream(self, messages):
         """LangChain-compatible stream method."""
         prompt = self._extract_prompt(messages)
-        for chunk in self.model.generate_stream(prompt, max_tokens=1024):
+        for chunk in self.model.generate_stream(prompt, max_tokens=2048):
             # Yield strings directly (LangChain expects string chunks)
             yield str(chunk) if chunk else ""
     
@@ -148,7 +148,7 @@ class WizardLMWrapper:
 
 # Initialize LLM providers
 _anthropic_llm = None
-_wizardlm_llm = None
+_qwenvl_llm = None
 
 # Initialize Anthropic
 anthropic_model_name = os.getenv("ANTHROPIC_MODEL", "claude-3-haiku-20240307")
@@ -165,20 +165,20 @@ if anthropic_api_key:
 else:
     logger.warning("ANTHROPIC_API_KEY not set - Anthropic LLM not available")
 
-# Initialize WizardLM (lazy load on first use to save memory)
-def get_wizardlm():
-    """Lazy load WizardLM model."""
-    global _wizardlm_llm
-    if _wizardlm_llm is None:
+# Initialize QwenVL (lazy load on first use to save memory)
+def get_qwenvl():
+    """Lazy load QwenVL model."""
+    global _qwenvl_llm
+    if _qwenvl_llm is None:
         try:
-            wizardlm_model_name = os.getenv("WIZARDLM_MODEL", "QuixiAI/WizardLM-13B-Uncensored")
-            logger.info(f"Initializing WizardLM with model: {wizardlm_model_name}")
-            _wizardlm_llm = WizardLMWrapper(wizardlm_model_name)
-            logger.info("WizardLM initialized successfully")
+            qwenvl_model_name = os.getenv("QWENVL_MODEL", "Qwen/Qwen2.5-VL-32B-Instruct")
+            logger.info(f"Initializing QwenVL with model: {qwenvl_model_name}")
+            _qwenvl_llm = QwenVLWrapper(qwenvl_model_name)
+            logger.info("QwenVL initialized successfully")
         except Exception as e:
-            logger.error(f"Failed to initialize WizardLM: {e}")
-            raise RuntimeError(f"WizardLM initialization failed: {e}")
-    return _wizardlm_llm
+            logger.error(f"Failed to initialize QwenVL: {e}")
+            raise RuntimeError(f"QwenVL initialization failed: {e}")
+    return _qwenvl_llm
 
 
 class LangChainService:
@@ -214,7 +214,7 @@ class LangChainService:
         
         # Check if at least one LLM is available
         if _anthropic_llm is None:
-            logger.warning("Anthropic LLM not initialized. WizardLM will be used if requested.")
+            logger.warning("Anthropic LLM not initialized. QwenVL will be used if requested.")
         
         # Store retrieval chains for different providers
         self.retrieval_chains = {}
@@ -267,9 +267,9 @@ class LangChainService:
             
             return "\n\n---\n\n".join(formatted)
         
-        # Wrap WizardLM with RunnableLambda if it's not already a LangChain model
-        if isinstance(llm, WizardLMWrapper):
-            # Wrap the WizardLM wrapper with RunnableLambda to make it chain-compatible
+        # Wrap QwenVL with RunnableLambda if it's not already a LangChain model
+        if isinstance(llm, QwenVLWrapper):
+            # Wrap the QwenVL wrapper with RunnableLambda to make it chain-compatible
             llm_runnable = RunnableLambda(llm.invoke)
         else:
             # Use the LLM directly (e.g., ChatAnthropic already implements Runnable)
@@ -291,9 +291,9 @@ class LangChainService:
     def _get_retrieval_chain(self, provider='anthropic'):
         """Get or create retrieval chain for the specified provider."""
         if provider not in self.retrieval_chains:
-            if provider == 'wizardlm':
-                llm = get_wizardlm()
-                self.retrieval_chains['wizardlm'] = self._create_retrieval_chain(llm)
+            if provider == 'qwenvl':
+                llm = get_qwenvl()
+                self.retrieval_chains['qwenvl'] = self._create_retrieval_chain(llm)
             elif provider == 'anthropic':
                 if _anthropic_llm is None:
                     raise RuntimeError("Anthropic LLM not initialized")
@@ -542,8 +542,8 @@ class LangChainService:
         try:
             # If not using training data, just answer directly without context
             if not use_training_data:
-                if provider == 'wizardlm':
-                    llm = get_wizardlm()
+                if provider == 'qwenvl':
+                    llm = get_qwenvl()
                     # Answer without context
                     for chunk in llm.stream(question):
                         yield json.dumps({"content": chunk})
@@ -571,8 +571,8 @@ class LangChainService:
             
             if doc_count == 0:
                 # No documents indexed yet - answer without context
-                if provider == 'wizardlm':
-                    llm = get_wizardlm()
+                if provider == 'qwenvl':
+                    llm = get_qwenvl()
                     for chunk in llm.stream(question):
                         yield json.dumps({"content": chunk})
                 else:
@@ -634,10 +634,10 @@ class LangChainService:
             
             full_prompt = f"{system_prompt}\n\nHuman: {question}\n\nAssistant:"
             
-            # Handle streaming differently for WizardLM vs Anthropic
-            if provider == 'wizardlm':
-                llm = get_wizardlm()
-                # Stream directly from WizardLM
+            # Handle streaming differently for QwenVL vs Anthropic
+            if provider == 'qwenvl':
+                llm = get_qwenvl()
+                # Stream directly from QwenVL
                 for chunk in llm.stream(full_prompt):
                     yield json.dumps({"content": chunk})
             else:
@@ -661,8 +661,8 @@ class LangChainService:
         try:
             # If not using training data, just answer directly without context
             if not use_training_data:
-                if provider == 'wizardlm':
-                    llm = get_wizardlm()
+                if provider == 'qwenvl':
+                    llm = get_qwenvl()
                     answer = llm.invoke(question)
                 else:
                     # Use Anthropic without context
@@ -687,8 +687,8 @@ class LangChainService:
             
             if doc_count == 0:
                 # No documents indexed yet - answer without context
-                if provider == 'wizardlm':
-                    llm = get_wizardlm()
+                if provider == 'qwenvl':
+                    llm = get_qwenvl()
                     answer = llm.invoke(question)
                 else:
                     if _anthropic_llm is None:
@@ -719,8 +719,8 @@ class LangChainService:
                 for doc in docs
             ]
             
-            # Handle WizardLM differently from Anthropic
-            if provider == 'wizardlm':
+            # Handle QwenVL differently from Anthropic
+            if provider == 'qwenvl':
                 # Format context from retrieved documents
                 def format_docs(docs):
                     if not docs:
@@ -751,7 +751,7 @@ class LangChainService:
                 
                 full_prompt = f"{system_prompt}\n\nHuman: {question}\n\nAssistant:"
                 
-                llm = get_wizardlm()
+                llm = get_qwenvl()
                 answer = llm.invoke(full_prompt)
             else:
                 # Use the retrieval chain for Anthropic

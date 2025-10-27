@@ -113,7 +113,7 @@ function initializeEventListeners() {
 function getModelLabel(modelId) {
     const models = {
         'anthropic': 'Anthropic Claude',
-        'wizardlm': 'WizardLM-13B-Uncensored'
+        'qwenvl': 'Qwen2.5-VL-32B-Instruct'
     };
     return models[modelId] || modelId;
 }
@@ -389,7 +389,7 @@ async function sendQuery() {
                 top_k: topK,
                 use_web: useWeb,
                 stream: true,
-                provider: selectedModel,  // Send provider (anthropic or wizardlm)
+                provider: selectedModel,  // Send provider (anthropic or qwenvl)
                 use_training_data: useTrainingData,
             }),
             signal: currentAbortController.signal  // Add abort signal

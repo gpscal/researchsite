@@ -151,14 +151,14 @@ class RAGService:
         # Determine which LLM to use
         provider = override_provider or os.getenv("LLM_PROVIDER", "anthropic")
         
-        if provider == "wizardlm":
+        if provider == "qwenvl":
             try:
-                from research_llm import WizardLMLLM
-                model_name = os.getenv("WIZARDLM_MODEL", DEFAULTS.get("WIZARDLM_MODEL", "QuixiAI/WizardLM-13B-Uncensored"))
-                self._llm = WizardLMLLM(model_name=model_name)
-                print(f"INFO: Using WizardLM: {model_name}")
+                from research_llm import QwenVLLL
+                model_name = os.getenv("QWENVL_MODEL", DEFAULTS.get("QWENVL_MODEL", "Qwen/Qwen2.5-VL-32B-Instruct"))
+                self._llm = QwenVLLL(model_name=model_name)
+                print(f"INFO: Using QwenVL: {model_name}")
             except Exception as e:
-                print(f"ERROR: Failed to load WizardLM, falling back to Anthropic: {e}")
+                print(f"ERROR: Failed to load QwenVL, falling back to Anthropic: {e}")
                 model_name = os.getenv("ANTHROPIC_MODEL", DEFAULTS.get("ANTHROPIC_MODEL", "claude-haiku-4-5-20251001"))
                 self._llm = AnthropicLLM(model_name=model_name)
                 print(f"INFO: Using Anthropic LLM (fallback): {model_name}")

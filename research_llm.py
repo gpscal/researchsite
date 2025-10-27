@@ -52,7 +52,7 @@ except ImportError:
 
 try:
     import torch
-    from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
+    from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig, AutoProcessor, AutoModelForVision2Seq
     TRANSFORMERS_AVAILABLE = True
 except ImportError:
     TRANSFORMERS_AVAILABLE = False
@@ -66,7 +66,7 @@ DEFAULTS = {
     "EMBED_MODEL_LOCAL": "all-MiniLM-L6-v2",
     "LLM_PROVIDER": "anthropic",
     "ANTHROPIC_MODEL": "claude-3-haiku-20240307",
-    "WIZARDLM_MODEL": "QuixiAI/WizardLM-13B-Uncensored",
+    "QWENVL_MODEL": "Qwen/Qwen2.5-VL-32B-Instruct",
     "CHUNK_SIZE": 1200,
     "CHUNK_OVERLAP": 200,
 
@@ -216,130 +216,109 @@ class AnthropicLLM:
             yield f"Error: {str(e)}"
 
 
-class WizardLMLLM:
-    """WizardLM local LLM interface using transformers."""
+class QwenVLLL:
+    """Qwen2.5-VL-32B-Instruct vision-language model interface using transformers."""
 
-    def __init__(self, model_name: Optional[str] = None, device: str = "auto"):
+    def __init__(self, model_name: Optional[str] = None, device: str = "cuda"):
         if not TRANSFORMERS_AVAILABLE:
             raise RuntimeError("transformers package not installed")
 
         # Get model name from config or environment
-        final_model_name = model_name or os.getenv("WIZARDLM_MODEL") or DEFAULTS.get("WIZARDLM_MODEL")
+        final_model_name = model_name or os.getenv("QWENVL_MODEL") or DEFAULTS.get("QWENVL_MODEL")
         if not final_model_name:
-            raise RuntimeError("WizardLM model not specified")
+            raise RuntimeError("QwenVL model not specified")
 
         self.model_name = final_model_name
         self.device = device
         self.model = None
-        self.tokenizer = None
+        self.processor = None
         
-        print(f"INFO: Initializing WizardLM model: {self.model_name}")
+        print(f"INFO: Initializing Qwen2.5-VL model: {self.model_name}")
         self._load_model()
 
     def _load_model(self):
-        """Load the WizardLM model and tokenizer."""
+        """Load the QwenVL model and processor."""
         try:
-            # Check if we should use quantization (4-bit) or full precision (fp16)
-            # For A100 80GB, we can use full fp16 for better quality
-            use_quantization = os.getenv("WIZARDLM_QUANTIZE", "false").lower() == "true"
+            print("INFO: Loading processor and model (this may take a while)...")
             
-            if use_quantization:
-                # Configure 4-bit quantization for memory efficiency (smaller GPUs)
-                print("INFO: Using 4-bit quantization (lower quality, saves memory)")
-                quantization_config = BitsAndBytesConfig(
-                    load_in_4bit=True,
-                    bnb_4bit_quant_type="nf4",
-                    bnb_4bit_compute_dtype=torch.float16,
-                    bnb_4bit_use_double_quant=True,
-                )
-            else:
-                print("INFO: Using full fp16 precision (better quality, ~27GB)")
-                quantization_config = None
-
-            # Load tokenizer
-            print("INFO: Loading tokenizer...")
-            self.tokenizer = AutoTokenizer.from_pretrained(
+            # Load processor (handles both text and images)
+            self.processor = AutoProcessor.from_pretrained(
                 self.model_name,
                 token=hf_token,
                 trust_remote_code=True
             )
             
-            # Set pad token if not set
-            if self.tokenizer.pad_token is None:
-                self.tokenizer.pad_token = self.tokenizer.eos_token
-
-            # Load model
-            print("INFO: Loading model (this may take a while)...")
-            model_kwargs = {
-                "device_map": self.device,
-                "token": hf_token,
-                "trust_remote_code": True,
-                "torch_dtype": torch.float16
-            }
-            
-            if quantization_config:
-                model_kwargs["quantization_config"] = quantization_config
-            
-            self.model = AutoModelForCausalLM.from_pretrained(
+            # Load model with optimized settings for A100
+            print("INFO: Using bf16 precision for better quality on A100")
+            self.model = AutoModelForVision2Seq.from_pretrained(
                 self.model_name,
-                **model_kwargs
+                token=hf_token,
+                trust_remote_code=True,
+                torch_dtype=torch.bfloat16 if torch.cuda.is_available() else torch.float16,
+                device_map=self.device
             )
             
             # Print device info
-            print(f"INFO: WizardLM model loaded successfully on device: {self.model.device}")
             if torch.cuda.is_available():
                 memory_allocated = torch.cuda.memory_allocated(0) / 1024**3
+                print(f"INFO: QwenVL model loaded successfully on device: {self.model.device}")
                 print(f"INFO: GPU memory used: {memory_allocated:.2f} GB")
             
         except Exception as e:
-            print(f"ERROR: Failed to load WizardLM model: {e}")
+            print(f"ERROR: Failed to load QwenVL model: {e}")
             raise
 
-    def generate(self, prompt: str, system: Optional[str] = None, max_tokens: int = 512, messages: Optional[List] = None) -> str:
-        """Generate response from WizardLM."""
+    def generate(self, prompt: str, system: Optional[str] = None, max_tokens: int = 2048, messages: Optional[List] = None) -> str:
+        """Generate response from QwenVL."""
         try:
-            # Prepare the input text
+            # For Qwen2.5-VL, prepare messages in the format expected by the processor
+            # If system is provided, prepend it to the user message
+            user_message = prompt
             if system:
-                input_text = f"### System:\n{system}\n\n### Human:\n{prompt}\n\n### Assistant:\n"
-            else:
-                input_text = f"### Human:\n{prompt}\n\n### Assistant:\n"
-
-            # Tokenize input
-            inputs = self.tokenizer.encode(input_text, return_tensors="pt", truncation=True, max_length=2048)
-            inputs = inputs.to(self.model.device)
-
+                user_message = f"System: {system}\n\nUser: {prompt}"
+            
+            messages = [{"role": "user", "content": user_message}]
+            
+            # Apply chat template
+            text = self.processor.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=True
+            )
+            
+            # Process text only (no images for now)
+            inputs = self.processor(
+                text=[text],
+                images=None,
+                videos=None,
+                padding=True,
+                return_tensors="pt",
+            )
+            inputs = inputs.to(self.device)
+            
             # Generate response
             with torch.no_grad():
-                outputs = self.model.generate(
-                    inputs,
-                    max_new_tokens=max_tokens,
-                    temperature=0.7,
-                    top_p=0.9,
-                    do_sample=True,
-                    pad_token_id=self.tokenizer.eos_token_id,
-                    eos_token_id=self.tokenizer.eos_token_id,
-                    repetition_penalty=1.1
-                )
-
+                generated_ids = self.model.generate(**inputs, max_new_tokens=max_tokens)
+            
             # Decode response
-            response = self.tokenizer.decode(outputs[0][inputs.shape[1]:], skip_special_tokens=True)
+            generated_ids_trimmed = [
+                out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
+            ]
+            output_text = self.processor.batch_decode(
+                generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
+            )
             
-            # Clean up response
-            response = response.strip()
-            if response.startswith("### Assistant:"):
-                response = response[13:].strip()
-            
-            return response
+            return output_text[0].strip()
 
         except Exception as e:
-            print(f"ERROR: WizardLM generation failed: {e}")
+            print(f"ERROR: QwenVL generation failed: {e}")
+            import traceback
+            traceback.print_exc()
             return f"Error generating response: {str(e)}"
 
-    def generate_stream(self, prompt: str, system: Optional[str] = None, max_tokens: int = 512, messages: Optional[List] = None):
-        """Generate streaming response from WizardLM."""
+    def generate_stream(self, prompt: str, system: Optional[str] = None, max_tokens: int = 2048, messages: Optional[List] = None):
+        """Generate streaming response from QwenVL."""
         try:
             # For now, generate the full response and yield it word by word
-            # In a more sophisticated implementation, you could use streaming generation
+            # Future: implement proper streaming generation
             response = self.generate(prompt, system, max_tokens, messages)
             
             # Split into words and yield them
@@ -348,7 +327,7 @@ class WizardLMLLM:
                 yield word + " "
                 
         except Exception as e:
-            print(f"ERROR: WizardLM streaming failed: {e}")
+            print(f"ERROR: QwenVL streaming failed: {e}")
             yield f"Error: {str(e)}"
 
 

@@ -1,17 +1,17 @@
 # Storage Requirements for Research Buddy
 
 ## Overview
-This document outlines storage requirements for running the Research Buddy application with WizardLM model and document storage.
+This document outlines storage requirements for running the Research Buddy application with Qwen2.5-VL-32B-Instruct model and document storage.
 
 ## Storage Breakdown
 
 ### 1. AI Models
 | Component | Size | Location | Purpose |
 |-----------|------|----------|---------|
-| **WizardLM-13B-Uncensored** | ~26 GB | `/tmp/hf_cache` or `~/.cache/huggingface` | Main LLM for text generation |
+| **Qwen2.5-VL-32B-Instruct** | ~33 GB | `/tmp/hf_cache` or `~/.cache/huggingface` | Multimodal LLM for text generation and image understanding |
 | **sentence-transformers/all-MiniLM-L6-v2** | ~90 MB | `/tmp/hf_cache` | Embedding model for RAG |
 | **PyTorch & Dependencies** | ~5 GB | `.venv/lib` | ML framework |
-| **TOTAL MODELS** | **~31 GB** | | |
+| **TOTAL MODELS** | **~38 GB** | | |
 
 ### 2. Application & Dependencies
 | Component | Size | Location |
@@ -33,28 +33,28 @@ This document outlines storage requirements for running the Research Buddy appli
 
 #### Minimum Configuration
 ```
-Total: 50 GB
-- 31 GB: Models
+Total: 60 GB
+- 38 GB: Models
 - 4 GB: Application
-- 15 GB: User data + buffer
+- 18 GB: User data + buffer
 ```
 **Use case**: Testing, small document library (< 100 PDFs)
 
 #### Recommended Configuration
 ```
-Total: 100 GB
-- 31 GB: Models
+Total: 120 GB
+- 38 GB: Models
 - 4 GB: Application  
-- 65 GB: User data (500-1000 PDFs)
+- 78 GB: User data (500-1000 PDFs)
 ```
 **Use case**: Production, moderate document library
 
 #### Heavy Usage Configuration
 ```
-Total: 200+ GB
-- 31 GB: Models
+Total: 220+ GB
+- 38 GB: Models
 - 4 GB: Application
-- 165+ GB: Large document library (2000+ PDFs)
+- 178+ GB: Large document library (2000+ PDFs)
 ```
 **Use case**: Enterprise, large document repositories
 
@@ -178,20 +178,20 @@ fi
 
 ### Q: How much RAM do I need?
 **A**: 
-- WizardLM-13B (quantized): 16-24 GB RAM
-- WizardLM-13B (full): 32-64 GB RAM
+- Qwen2.5-VL-32B (bfloat16): 64-80 GB RAM
+- Qwen2.5-VL-32B (quantized): 32-40 GB RAM
 - Embedding model: 2-4 GB RAM
-- **Recommended minimum**: 32 GB RAM
+- **Recommended minimum**: 80 GB RAM
 
 ### Q: Can I reduce model storage?
 **A**: Yes, use quantized models:
-- 4-bit quantization: ~7 GB (recommended)
-- 8-bit quantization: ~13 GB
-- Full model: ~26 GB
+- 4-bit quantization: ~9 GB (recommended for memory-constrained systems)
+- 8-bit quantization: ~17 GB 
+- Full model (bfloat16): ~33 GB (recommended for best quality)
 
 To use quantized model, update `.env`:
 ```bash
-WIZARDLM_QUANTIZATION=4bit
+QWENVL_QUANTIZE=true
 ```
 
 ### Q: What happens if I run out of space?
@@ -207,13 +207,13 @@ WIZARDLM_QUANTIZATION=4bit
 
 | Configuration | Storage | RAM | Use Case |
 |---------------|---------|-----|----------|
-| **Minimal** | 50 GB | 16 GB | Testing, dev |
-| **Recommended** | 100 GB | 32 GB | Small teams |
-| **Production** | 200+ GB | 64 GB | Organizations |
-| **Enterprise** | 500+ GB | 128 GB | Large scale |
+| **Minimal** | 60 GB | 40 GB | Testing, dev |
+| **Recommended** | 120 GB | 80 GB | Small teams |
+| **Production** | 220+ GB | 128 GB | Organizations |
+| **Enterprise** | 500+ GB | 256 GB | Large scale |
 
 **Our current setup**: Models in `/tmp` (saved on disk space) + persistent data in `/researchsite/data`
 
 ---
 
-*Last updated: Based on WizardLM-13B-Uncensored and current architecture*
+*Last updated: Based on Qwen2.5-VL-32B-Instruct and current architecture*

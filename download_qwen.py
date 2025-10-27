@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Script to download and cache the WizardLM-13B-Uncensored model.
+Script to download and cache the Qwen2.5-VL-32B-Instruct model.
 This will download the model to the local cache for faster loading.
 """
 
@@ -12,21 +12,21 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
-def download_wizardlm_model():
-    """Download and cache the WizardLM model."""
+def download_qwenvl_model():
+    """Download and cache the Qwen2.5-VL model."""
     try:
-        from transformers import AutoTokenizer, AutoModelForCausalLM
+        from transformers import AutoProcessor, AutoModelForVision2Seq
         import torch
         
-        model_name = "QuixiAI/WizardLM-13B-Uncensored"
+        model_name = "Qwen/Qwen2.5-VL-32B-Instruct"
         hf_token = os.getenv("HF_TOKEN")
         
-        print(f"INFO: Downloading WizardLM model: {model_name}")
+        print(f"INFO: Downloading Qwen2.5-VL model: {model_name}")
         print("INFO: This may take a while depending on your internet connection...")
         
-        # Download tokenizer
-        print("INFO: Downloading tokenizer...")
-        tokenizer = AutoTokenizer.from_pretrained(
+        # Download processor (handles both tokenizer and image processing)
+        print("INFO: Downloading processor...")
+        processor = AutoProcessor.from_pretrained(
             model_name,
             token=hf_token,
             trust_remote_code=True
@@ -34,7 +34,7 @@ def download_wizardlm_model():
         
         # Download model (this will cache it locally)
         print("INFO: Downloading model (this will cache it locally)...")
-        model = AutoModelForCausalLM.from_pretrained(
+        model = AutoModelForVision2Seq.from_pretrained(
             model_name,
             token=hf_token,
             trust_remote_code=True,
@@ -47,17 +47,17 @@ def download_wizardlm_model():
         
         # Clean up memory
         del model
-        del tokenizer
+        del processor
         torch.cuda.empty_cache() if torch.cuda.is_available() else None
         
         return True
         
     except Exception as e:
-        print(f"ERROR: Failed to download WizardLM model: {e}")
+        print(f"ERROR: Failed to download Qwen2.5-VL model: {e}")
         return False
 
 if __name__ == "__main__":
-    print("WizardLM Model Downloader")
+    print("Qwen2.5-VL-32B-Instruct Model Downloader")
     print("=" * 40)
     
     if not os.getenv("HF_TOKEN"):
@@ -65,11 +65,11 @@ if __name__ == "__main__":
         print("Please set HF_TOKEN in your .env file")
         sys.exit(1)
     
-    success = download_wizardlm_model()
+    success = download_qwenvl_model()
     
     if success:
         print("\n✅ Model download completed successfully!")
-        print("You can now use WizardLM by setting LLM_PROVIDER=wizardlm in your .env file")
+        print("You can now use Qwen2.5-VL by setting LLM_PROVIDER=qwenvl in your .env file")
     else:
         print("\n❌ Model download failed!")
         sys.exit(1)
