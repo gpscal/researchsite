@@ -16,8 +16,10 @@ from flask_cors import CORS
 
 from rag_service import get_rag_service
 from search_engine import get_search_service
-from pdf_processor import PDFProcessor
-from pdf_service import get_pdf_service
+from langchain_service import get_langchain_service
+# pdf_processor and pdf_service are no longer used
+# from pdf_processor import PDFProcessor
+# from pdf_service import get_pdf_service
 # embedding_manager is no longer directly used here
 
 # Optional services (fail gracefully if missing)
@@ -55,11 +57,13 @@ logger = logging.getLogger(__name__)
 # Use DeepSeek OCR for lower memory consumption if available
 ENABLE_PDF_OCR = os.getenv("ENABLE_PDF_OCR", "true").lower() not in {"0", "false", "no"}
 
-pdf_processor = PDFProcessor(memory_safe=True, max_image_size=2000, use_deepseek=True, enable_ocr=ENABLE_PDF_OCR)
-pdf_service = get_pdf_service(enable_ocr=ENABLE_PDF_OCR)
+# pdf_processor = PDFProcessor(memory_safe=True, max_image_size=2000, use_deepseek=True, enable_ocr=ENABLE_PDF_OCR)
+# pdf_service = get_pdf_service(enable_ocr=ENABLE_PDF_OCR)
 rag = get_rag_service()
 search = get_search_service()
-vector_store = rag._get_collection()
+vector_store = rag._get_collection()  # This might still be used for health checks
+langchain_service = get_langchain_service()
+
 # Start resource monitor in background
 try:
     from resource_monitor import ResourceMonitor
@@ -108,41 +112,30 @@ def upload_pdf_page():
 def rag_query():
     payload = request.get_json(force=True)
     question = payload.get("question", "").strip()
-    top_k = int(payload.get("top_k", 3))
+    # top_k = int(payload.get("top_k", 3)) # top_k is handled by the retrieval chain
     stream = bool(payload.get("stream", True))
-    use_training_data = bool(payload.get("use_training_data", False))
-    use_web = bool(payload.get("use_web", False))
-    model_type = payload.get("model_type")
+    # These flags are part of the old RAG service logic which is being replaced for PDF queries
+    # use_training_data = bool(payload.get("use_training_data", False))
+    # use_web = bool(payload.get("use_web", False))
+    # model_type = payload.get("model_type")
 
     if not question:
         return jsonify({"error": "Question is required"}), 400
 
     if not stream:
-        result = rag.query(
-            question,
-            top_k=top_k,
-            use_training_data=use_training_data,
-            use_web=use_web, # Pass use_web directly
-            model_type=model_type,
-        )
+        result = langchain_service.query(question)
         _log_conversation(
             question,
             result.get("answer", ""),
-            {"top_k": top_k, "use_training_data": use_training_data, "use_web": use_web},
+            {},
         )
         return jsonify(result)
 
     def responder():
-        for chunk in rag.query_stream(
-            question,
-            top_k=top_k,
-            use_training_data=use_training_data,
-            use_web=use_web, # Pass use_web directly
-            model_type=model_type,
-        ):
-            yield f"data: {json.dumps(chunk)}\n\n"
+        for chunk in langchain_service.query_stream(question):
+            yield f"data: {chunk}\n\n"
 
-    return Response(responder(), mimetype="text/plain")
+    return Response(responder(), mimetype="text/event-stream")
 
 
 @app.route("/api/rag/upload-pdf", methods=["POST"])
@@ -151,15 +144,15 @@ def upload_pdf():
         return jsonify({"success": False, "error": "No file uploaded"}), 400
 
     file = request.files["file"]
-    if not file.filename.lower().endswith(".pdf"):
+    if not file.filename or not file.filename.lower().endswith(".pdf"):
         return jsonify({"success": False, "error": "A PDF file is required"}), 400
 
     file_bytes = file.read()
     if not file_bytes:
         return jsonify({"success": False, "error": "Empty file"}), 400
 
-    # Process PDF with enhanced PDF service (use smaller batch size)
-    result = pdf_service.process_and_store_pdf(file_bytes, file.filename, batch_size=8)
+    # Process and index the PDF using the new LangChain service
+    result = langchain_service.index_pdf(file_bytes, file.filename)
     
     if not result["success"]:
         return jsonify({
@@ -167,39 +160,17 @@ def upload_pdf():
             "error": f"PDF processing failed: {result.get('error')}"
         }), 500
     
-    # Extract chunks for vector storage
-    chunks = result["chunks"]
-    texts = [chunk.text for chunk in chunks]
-    
-    # Create enhanced metadata with page context
-    metas = [{
-        "source": file.filename,
-        "page": chunk.page_number,
-        "document_id": result["document_id"],
-        "has_ocr": chunk.metadata.get("has_ocr", False) if chunk.metadata else False
-    } for chunk in chunks]
-
-    # Get embedder from rag service with GPU optimization
-    embedder = rag._get_embedder()
-    embeddings = embedder.embed_documents(texts)
-    ids = [f"{result['document_id']}_{i}" for i in range(len(texts))]
-
-    # Store in vector database
-    vector_store.add(
-        documents=texts,
-        embeddings=embeddings,
-        metadatas=metas,
-        ids=ids
-    )
-
-    return jsonify({
+    # The new service returns a dict that is already suitable for the response.
+    # We just need to ensure all expected keys are present.
+    response_data = {
         "success": True, 
         "document_id": result["document_id"],
         "filename": file.filename,
         "page_count": result["page_count"],
-        "chunks": len(chunks),
-        "metadata": result.get("metadata", {})
-    })
+        "chunks": result["chunks"],
+        "metadata": {} # metadata is not extracted by the new service in the same way. Returning empty.
+    }
+    return jsonify(response_data)
 
 
 @app.route("/api/rag/upload-image", methods=["POST"])
@@ -238,45 +209,35 @@ def search_crawl():
     return jsonify(result)
 
 
+# The following PDF routes might be deprecated if their functionality is fully replaced.
+# For now, they are left as they might be used by other parts of the frontend.
 @app.route("/api/pdf/document/<document_id>", methods=["GET"])
 def get_pdf_document(document_id):
     """Get information about a specific PDF document"""
-    result = pdf_service.get_document_info(document_id)
-    return jsonify(result)
+    # This relied on pdf_service, which is being removed. 
+    # Returning a placeholder response.
+    return jsonify({"success": False, "error": "This endpoint is deprecated."})
 
 @app.route("/api/pdf/documents", methods=["GET"])
 def list_pdf_documents():
     """List all PDF documents with pagination"""
-    limit = request.args.get("limit", 100, type=int)
-    offset = request.args.get("offset", 0, type=int)
-    result = pdf_service.list_documents(limit=limit, offset=offset)
-    return jsonify(result)
+    # This relied on pdf_service, which is being removed. 
+    # Returning a placeholder response.
+    return jsonify({"success": False, "error": "This endpoint is deprecated."})
 
 @app.route("/api/pdf/page", methods=["GET"])
 def get_pdf_page():
     """Get the full text of a specific PDF page"""
-    document_id = request.args.get("document_id")
-    page_number = request.args.get("page_number", type=int)
-    
-    if not document_id or not page_number:
-        return jsonify({"success": False, "error": "document_id and page_number are required"}), 400
-        
-    result = pdf_service.get_page_text(document_id, page_number)
-    return jsonify(result)
+    # This relied on pdf_service, which is being removed. 
+    # Returning a placeholder response.
+    return jsonify({"success": False, "error": "This endpoint is deprecated."})
 
 @app.route("/api/pdf/query", methods=["POST"])
 def query_pdf_document():
     """Query a specific PDF document for relevant pages"""
-    payload = request.get_json(force=True)
-    document_id = payload.get("document_id")
-    query = payload.get("query")
-    top_k = payload.get("top_k", 3)
-    
-    if not document_id or not query:
-        return jsonify({"success": False, "error": "document_id and query are required"}), 400
-        
-    result = pdf_service.query_document_pages(document_id, query, top_k=top_k)
-    return jsonify(result)
+    # This relied on pdf_service, which is being removed. 
+    # Returning a placeholder response.
+    return jsonify({"success": False, "error": "This endpoint is deprecated."})
 
 @app.route("/health", methods=["GET"])
 def health_check():

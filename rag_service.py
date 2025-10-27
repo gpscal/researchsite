@@ -70,6 +70,9 @@ except ImportError:
     print("WARNING: Search engine service not available")
 
 
+# The RAG service is now simplified and will mainly be used for non-PDF related RAG,
+# such as web search, and for providing configuration to the new langchain_service.
+# PDF-specific ingestion and querying is handled by langchain_service.
 class RAGService:
     """Service wrapper for RAG Research LLM functionality"""
     
@@ -164,6 +167,11 @@ class RAGService:
                 self._collection = client.create_collection(self.config["COLLECTION"])
         return self._collection
     
+    # The query and query_stream methods below are now primarily for non-PDF RAG,
+    # like web search. PDF queries are now handled by langchain_service.
+    # I am keeping them for now to avoid breaking other functionalities,
+    # but they could be refactored further to separate web RAG from PDF RAG more cleanly.
+
     def _get_web_search(self):
         """Get or create web search (thread-safe)"""
         # Don't cache web search - create fresh for each request to avoid threading issues
@@ -341,6 +349,8 @@ Domain: {domain}, Timestamp: {timestamp}"""
             traceback.print_exc()
             return [], []
     
+    # The ingest_* methods below are kept for backwards compatibility or for ingesting non-PDF data.
+    # PDF ingestion is now handled by langchain_service.index_pdf.
     def ingest_text(self, text: str, source: str = "uploaded_text") -> Dict:
         """
         Ingest text content into the vector store
