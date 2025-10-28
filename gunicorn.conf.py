@@ -6,10 +6,11 @@ import os
 bind = "0.0.0.0:80"
 backlog = 2048
 
-# Worker processes - use fewer workers to save memory
-workers = min(multiprocessing.cpu_count(), 4)  # Cap at 4 workers
+# Worker processes - use 1 worker for qwen model (62GB GPU memory)
+# Multiple workers would try to load the model and run out of GPU memory
+workers = 1
 worker_class = "gthread"
-threads = 2
+threads = 4  # Use more threads to handle concurrent requests
 worker_connections = 1000
 timeout = 300  # Increased timeout for model loading
 keepalive = 2
@@ -33,7 +34,7 @@ pidfile = "/var/run/researchsite/researchsite.pid"
 # Environment variables
 raw_env = [
     "PORT=80",
-    "PYTHONPATH=/ResearchBuddy",
+    "PYTHONPATH=/researchsite",
 ]
 
 # IMPORTANT: Disable preload to avoid CUDA forking issues
