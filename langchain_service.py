@@ -53,6 +53,14 @@ except ImportError:
     RAG_SERVICE_AVAILABLE = False
     logger.warning("RAG service not available for config import")
 
+# Import web search service
+try:
+    from search_engine import get_search_service
+    WEB_SEARCH_AVAILABLE = True
+except ImportError:
+    WEB_SEARCH_AVAILABLE = False
+    logger.warning("Web search service not available")
+
 # Set up configuration
 _persist_dir = "data/vector_store"
 _collection_name = "research_collection"
@@ -192,6 +200,15 @@ class LangChainService:
         # Initialize document tracking system
         self.doc_tracking_path = Path(_persist_dir) / "document_tracking.json"
         self._load_document_tracking()
+        
+        # Initialize web search service if available
+        self.search_service = None
+        if WEB_SEARCH_AVAILABLE:
+            try:
+                self.search_service = get_search_service()
+                logger.info("Web search service initialized")
+            except Exception as e:
+                logger.warning(f"Failed to initialize web search service: {e}")
         
         # Use persistent Chroma client for data persistence
         chroma_client = chromadb.PersistentClient(
@@ -542,27 +559,87 @@ class LangChainService:
     def query_stream(self, question: str, provider: str = 'anthropic', use_training_data: bool = True, use_web: bool = False, top_k: int = 8) -> Iterator[str]:
         """Queries the retrieval chain and streams the response."""
         try:
-            # If not using training data, just answer directly without context
+            # Perform web search if requested
+            web_results = []
+            indexing_info = None
+            if use_web and self.search_service:
+                try:
+                    logger.info(f"Performing web search for: {question}")
+                    search_result = self.search_service.search_with_auto_indexing(
+                        query=question,
+                        num_results=top_k,
+                        auto_index=True,
+                        use_google=True
+                    )
+                    
+                    if search_result.get('success'):
+                        # Combine local and Google results
+                        local_results = search_result.get('local_results', [])
+                        google_results = search_result.get('google_results', [])
+                        
+                        # Format web results
+                        for r in local_results[:top_k]:
+                            web_results.append({
+                                'title': r.get('title', ''),
+                                'url': r.get('url', ''),
+                                'snippet': r.get('snippet', ''),
+                                'source': 'local_index'
+                            })
+                        
+                        for r in google_results[:top_k]:
+                            web_results.append({
+                                'title': r.get('title', ''),
+                                'url': r.get('url', ''),
+                                'snippet': r.get('snippet', ''),
+                                'source': 'google'
+                            })
+                        
+                        # Get indexing info
+                        indexing_info = {
+                            'newly_indexed_domains': search_result.get('newly_indexed_domains', []),
+                            'total_indexed_domains': search_result.get('total_indexed_domains', 0),
+                            'total_indexed_pages': search_result.get('total_indexed_pages', 0)
+                        }
+                        
+                        logger.info(f"Web search returned {len(web_results)} results")
+                except Exception as e:
+                    logger.error(f"Web search failed: {e}")
+            
+            # If not using training data, answer with web context or directly
             if not use_training_data:
+                # Build context from web results if available
+                web_context = ""
+                if web_results:
+                    web_context = "\n\n=== Web Search Results ===\n\n"
+                    for i, result in enumerate(web_results[:5], 1):
+                        web_context += f"[{i}] {result['title']}\n"
+                        web_context += f"URL: {result['url']}\n"
+                        web_context += f"Content: {result['snippet']}\n\n"
+                
                 if provider == 'qwenvl':
                     llm = get_qwenvl()
-                    # Answer without context
-                    for chunk in llm.stream(question):
+                    prompt = f"{web_context}\n\nQuestion: {question}\n\nAnswer:" if web_context else question
+                    for chunk in llm.stream(prompt):
                         yield json.dumps({"content": chunk})
                 else:
-                    # Use Anthropic without context
+                    # Use Anthropic
                     if _anthropic_llm is None:
                         yield json.dumps({"error": "Anthropic LLM not available"})
                         yield json.dumps({"done": True})
                         return
                     
-                    # Simple prompt without RAG context
-                    for chunk in _anthropic_llm.stream(question):
+                    prompt = f"{web_context}\n\n{question}" if web_context else question
+                    for chunk in _anthropic_llm.stream(prompt):
                         if hasattr(chunk, 'content'):
                             yield json.dumps({"content": chunk.content})
                         else:
                             yield json.dumps({"content": str(chunk)})
                 
+                # Send web results and indexing info
+                if web_results:
+                    yield json.dumps({"web_results": web_results})
+                if indexing_info:
+                    yield json.dumps({"indexing_info": indexing_info})
                 yield json.dumps({"sources": []})
                 yield json.dumps({"done": True})
                 return
@@ -619,6 +696,15 @@ class LangChainService:
             
             context = format_docs(docs)
             
+            # Add web search results to context if available
+            if web_results:
+                web_context = "\n\n=== Web Search Results ===\n\n"
+                for i, result in enumerate(web_results[:5], 1):
+                    web_context += f"[Web Result {i}] {result['title']}\n"
+                    web_context += f"URL: {result['url']}\n"
+                    web_context += f"Content: {result['snippet']}\n\n"
+                context += web_context
+            
             # Build the full prompt
             system_prompt = (
                 "You are a helpful research assistant. The user has uploaded PDF documents that are indexed. "
@@ -652,6 +738,12 @@ class LangChainService:
             if sources:
                 yield json.dumps({"sources": sources})
             
+            # Send web results and indexing info
+            if web_results:
+                yield json.dumps({"web_results": web_results})
+            if indexing_info:
+                yield json.dumps({"indexing_info": indexing_info})
+            
             yield json.dumps({"done": True})
         except Exception as e:
             logger.error(f"Error in query_stream: {e}", exc_info=True)
@@ -661,11 +753,66 @@ class LangChainService:
     def query(self, question: str, provider: str = 'anthropic', use_training_data: bool = True, use_web: bool = False, top_k: int = 8) -> Dict[str, Any]:
         """Queries the retrieval chain and returns the final response."""
         try:
+            # Perform web search if requested
+            web_results = []
+            indexing_info = None
+            if use_web and self.search_service:
+                try:
+                    logger.info(f"Performing web search for: {question}")
+                    search_result = self.search_service.search_with_auto_indexing(
+                        query=question,
+                        num_results=top_k,
+                        auto_index=True,
+                        use_google=True
+                    )
+                    
+                    if search_result.get('success'):
+                        # Combine local and Google results
+                        local_results = search_result.get('local_results', [])
+                        google_results = search_result.get('google_results', [])
+                        
+                        # Format web results
+                        for r in local_results[:top_k]:
+                            web_results.append({
+                                'title': r.get('title', ''),
+                                'url': r.get('url', ''),
+                                'snippet': r.get('snippet', ''),
+                                'source': 'local_index'
+                            })
+                        
+                        for r in google_results[:top_k]:
+                            web_results.append({
+                                'title': r.get('title', ''),
+                                'url': r.get('url', ''),
+                                'snippet': r.get('snippet', ''),
+                                'source': 'google'
+                            })
+                        
+                        # Get indexing info
+                        indexing_info = {
+                            'newly_indexed_domains': search_result.get('newly_indexed_domains', []),
+                            'total_indexed_domains': search_result.get('total_indexed_domains', 0),
+                            'total_indexed_pages': search_result.get('total_indexed_pages', 0)
+                        }
+                        
+                        logger.info(f"Web search returned {len(web_results)} results")
+                except Exception as e:
+                    logger.error(f"Web search failed: {e}")
+            
             # If not using training data, just answer directly without context
             if not use_training_data:
+                # Build context from web results if available
+                web_context = ""
+                if web_results:
+                    web_context = "\n\n=== Web Search Results ===\n\n"
+                    for i, result in enumerate(web_results[:5], 1):
+                        web_context += f"[{i}] {result['title']}\n"
+                        web_context += f"URL: {result['url']}\n"
+                        web_context += f"Content: {result['snippet']}\n\n"
                 if provider == 'qwenvl':
                     llm = get_qwenvl()
-                    answer = llm.invoke(question)
+                    prompt = f"{web_context}\n\nQuestion: {question}\n\nAnswer:" if web_context else question
+                    answer = llm.invoke(prompt)
                 else:
                     # Use Anthropic without context
                     if _anthropic_llm is None:
@@ -674,14 +821,22 @@ class LangChainService:
                             "error": "Anthropic LLM not available",
                             "answer": "Sorry, the LLM is not available."
                         }
-                    response = _anthropic_llm.invoke(question)
+                    prompt = f"{web_context}\n\n{question}" if web_context else question
+                    response = _anthropic_llm.invoke(prompt)
                     answer = response.content if hasattr(response, 'content') else str(response)
                 
-                return {
+                result = {
                     "success": True,
                     "answer": answer,
                     "sources": []
                 }
+                
+                if web_results:
+                    result['web_results'] = web_results
+                if indexing_info:
+                    result['indexing_info'] = indexing_info
+                
+                return result
             
             # Check if the collection has any documents
             collection = self.vector_store._collection
@@ -736,6 +891,15 @@ class LangChainService:
                 
                 context = format_docs(docs)
                 
+                # Add web search results to context if available
+                if web_results:
+                    web_context = "\n\n=== Web Search Results ===\n\n"
+                    for i, result in enumerate(web_results[:5], 1):
+                        web_context += f"[Web Result {i}] {result['title']}\n"
+                        web_context += f"URL: {result['url']}\n"
+                        web_context += f"Content: {result['snippet']}\n\n"
+                    context += web_context
+                
                 # Build the full prompt
                 system_prompt = (
                     "You are a helpful research assistant. The user has uploaded PDF documents that are indexed. "
@@ -760,11 +924,18 @@ class LangChainService:
                 retrieval_chain = self._get_retrieval_chain(provider)
                 answer = retrieval_chain.invoke({"input": question})
             
-            return {
+            result = {
                 "success": True,
                 "answer": answer,
                 "sources": sources
             }
+            
+            if web_results:
+                result['web_results'] = web_results
+            if indexing_info:
+                result['indexing_info'] = indexing_info
+            
+            return result
         except Exception as e:
             logger.error(f"Error in query: {e}", exc_info=True)
             return {
